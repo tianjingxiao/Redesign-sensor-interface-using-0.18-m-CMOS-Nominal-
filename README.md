@@ -6,7 +6,7 @@ This my project when I had course at UCSD
 
 The report is named as "Project Report"
 
-● properly size all of the MOSFETs and resistors to meet the specific requiements.
+● Properly size all of the MOSFETs and resistors to meet the specific requiements.
 
 ● Calculation of key design parameters, such as gm, bias currents, etc. Compare the most relevant hand calculations with the final SPICE values in a table and discuss the discrepancies.
 
