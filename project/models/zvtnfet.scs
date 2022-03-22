@@ -1,0 +1,287 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/zvtnfet.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.2 10/04/23 08:14:32
+*
+*>  IBM 7RF/7WL  zvtnfet     1.8V zero vt NFET subcircuit
+*
+***************************************************************************
+*
+*  SYNTAX:  xxx ( d g s b ) zvtnfet l=nnn w=nnn
+*
+*  REQUIRED:
+*            +        w = nnn  <- Design width of RX (meters)
+*            +        l = nnn  <- Design length of PC (meters)
+*  OPTIONAL:
+*            +       as = 0    <- Source diffusion area (meters^2)
+*            +       ad = 0    <- Drain diffusion area (meters^2)
+*            +       ps = 0    <- Source diffusion perimeter in (meters)
+*            +       pd = 0    <- Drain diffusion perimeter in (meters)
+*            +      nrd = 0    <- Number of squares of drain diffusion
+*            +      nrs = 0    <- Number of squares of source diffusion
+*            +    dtemp = 0    <- Device temp rise from ambient (deg C)
+*            +       nf = 1    <- Number of gate stripes or "fingers" in device
+*            +  m (par) = 1    <- Number of parallel instances (multiplicity)
+*            +     gcon = 1    <- Gate connection switch (1->single-side,
+*                                                         2->double-side)
+*            +      rsx = 50   <- Body resistance
+*
+*  NOTES:
+*
+*  1. If nrd or nrs are not passed to the model they will default to 0.
+*     This will result in 0 ohms of silicided S/D resistance being placed
+*     in series with the device model.
+*
+* SUBCIRCUIT SCHEMATIC:          drain
+*                                  O
+*                                  |
+*                                  |
+*                                  /
+*                           rdext  \     Ddb (Includes regular NFET drain area
+*                                  /          and STI bounded perimeter)
+*                              d1  |_______________|/|__________
+*                                  |       |       |\|          |
+*        Zvt NFET diffusion cap    |       |                    |
+*        terms are included within |       |                    |
+*        its BSIM model        ____|    ___|                    |
+*    gate               g1  | |       ||      |  b1             |     bulk
+*        O-------\/\/\/-----| |      -||      |-------\/\/\/----o-------O
+*              |   rgate    | |____ | ||___   |         rsb     |
+*              |           zvtnfet || nfet |                    |
+*              |___________________||      |                    |
+*                                  |       |                    |
+*                              s1  |_______|_______|/|__________|
+*                                  |               |\|
+*                                  \
+*                           rsext  /     Dsb (Includes regular NFET source area
+*                                  \          and STI bounded perimeter)
+*                                  |
+*                                  |
+*                                  O
+*                               source
+*
+* IBM CONFIDENTIAL
+* (C) 2010 IBM Corporation
+*
+***************************************************************************
+simulator lang=spectre
+subckt zvtnfet (d g s b)
+parameters
++   w=0 l=0 nf=1 as=0 ad=0 ps=0 pd=0 nrd=0 nrs=0
++   gcon=1 rsx=50 dtemp=0 rf=0 par=1
++   zad=ad zas=as znrd=nrd znrs=nrs zpd=pd zps=ps
+*
+* Zvt within RX spacing (RX width under PC without Zvt)
++  dzvtw = 0.3u
+*
+* Gate bounded perimeter (identical for source and drain)
++  pgate    = (2*dzvtw+ndelrx)
++  pzvtgate = (w-2*dzvtw)
+*
+* STI S/D bounded perimeter (subtract gate bounded from total passed in)
++  pstis = max(0,(zps-(pzvtgate+pgate)))
++  pstid = max(0,(zpd-(pzvtgate+pgate)))
+*
+* Set flags for number of fingers : odd, even or single
++  nfo = (int((nf+1)/2) - int(nf/2))
++  nfe = (1 - nfo)
+* Area of drain, based on number of fingers
++  nade= zad-(0.25u*pzvtgate)
++  nado= (zad*nf-(0.92u*pzvtgate)-(0.25u*pzvtgate*(nf-1)))/nf
++  nad = max(0,(nfe*nade + nfo*nado))
+* Area of source, based on number of fingers
++  nase= (zas*nf-2*(0.92u*pzvtgate)-(0.25u*pzvtgate)*max(0,(nf-2)))/nf
++  naso= (zas*nf-(0.92u*pzvtgate)-(0.25u*pzvtgate*(nf-1)))/nf
++  nas = max(0,(nfe*nase + nfo*naso))
+*
+* Mis-match calculations as a function of w, l, nf and multiplicity (par)
++  kvt=0.45e-8    kvtw=0.93e-6   kvtl=0.26u
++  kmb=5.5e-6     kmbw=0.3u      kmbl=-0.5u
++  sigvth  = (kvt/sqrt((w-kvtw)*nf*par*(l-kvtl)))
++  sigbeta = (kmb/sqrt((w-kmbw)*nf*par*(l-kmbl)))
++  mmvth0  = (sigvth * mvth0)          // vth0 mis-match
++  mmbeta  = (sigbeta * mbeta)         // beta mis-match
+*
+* Flicker noise: statistics function of w, l, nf and multiplicity (par)
++  noi_scale=(noistdn-min(log(sqrt(w*l*nf*par/noidevan)),0))
++  noi_mul=(exp(dnoizn*noi_scale))
+*
+* Gate resistance calculation for all cases (function of w, l and nf)
++  rg1=(pcrsi/(nf*gcon))*(0.4u+w/(3*gcon))/(l+lwbpc)
++  rg2=(-3.49+6.97e6*l+0.219m*(1/(w*nf)))
++  rge=(rg1+rg2)
+*
+* Node voltage warning checks
++  pvlim  = 1.98
++  pblim  = 3.4
+*
+if (gbv==2) {
+ vds_check  assert dev=m0 param=vds       min=0 max=pvlim message="Vds exceeds limit" level=warning
+ vgs_check  assert dev=m0 param=vgs       min=-pvlim max=pvlim message="Vgs exceeds limit" level=warning
+ vgd_check  assert dev=m0 expr=(vgs-vds)  min=-pvlim max=pvlim message="Vgd exceeds limit" level=warning
+ vgb_check  assert dev=m0 expr=(vgs-vbs)  min=-pblim max=pblim message="Vgb exceeds limit" level=warning
+ vbs_check  assert dev=m0 param=vbs       min=-pblim message="Vbs exceeds limit" level=warning
+ vbs_chkfwd assert dev=m0 param=vbs       max=fwdlim message="Vbs source-body diode is being forward-biased" level=warning
+ vbd_check  assert dev=m0 expr=(vbs-vds)  min=-pblim message="Vbd exceeds limit" level=warning
+ vbd_chkfwd assert dev=m0 expr=(vbs-vds)  max=fwdlim message="Vbd drain-body diode is being forward-biased" level=warning
+}
+*
+m0 d1 g1 s1 b1 zvtnch w=(w-2*dzvtw) l=l as=(zas-nas) ad=(zad-nad) ps=pzvtgate
++                     pd=pzvtgate nrd=0 nrs=0 m=nf trise=dtemp
+m1 d1 g  s1 b2 nch    w=0.6u l=l as=1e-15 ad=1e-15 ps=pgate pd=pgate
++                     nrd=0 nrs=0 m=nf trise=dtemp
+rgate  g1  g resistor r=rge
+rsb    b  b1 resistor r=rsx
+rsb2   b  b2 resistor r=100
+ddb    b  d1 ndio area=nad pj=pstid m=nf trise=dtemp
+dsb    b  s1 ndio area=nas pj=pstis m=nf trise=dtemp
+rdext  d1  d resistor r=(znrd*rsh_zn/nf)
+rsext  s1  s resistor r=(znrs*rsh_zn/nf)
+*
+***************************************************************************
+* Zero Vt NFET BSIM3v3.2.4 Model
+***************************************************************************
+model zvtnch bsim3v3                              type    = n
++version= 3.24	  	tnom	= 25		  tox	  = tox_zn
++mobmod	= 1 		xj     	= 3.6e-7    	  nch	  = 5e16
++lint   = lint_zn 	wint   	= wint_zn         vth0	  = (vth0_zn+mmvth0)
++k1    	= 0.095		k2	= 0		  k3	  = 15	
++k3b	= -5		w0	= 1e-7 		  nlx	  = 1.47e-8
++vbm	= -5.0		dvt0   	= 0.5		  dvt1    = 0.2	
++dvt2	= 0.1 		dvt0w	= -1		  dvt1w	  = 1e6
++dvt2w	= -0.03 	eta0   	= 0.15		  etab	  = 0	
++dsub	= 0.3691 	voff	= -0.09		  nfactor = 0	
++cit	= 0 		cdsc	= 2e-3		  cdscb   = 0	
++cdscd	= 0 		u0    	= (u0_zn+mmbeta)  ua	  = 0.7e-10      
++ub  	= 1.5e-18	uc	= -3e-11 	  a0 	  = 2.0 
++a1	= 0		a2	= 1		  ags 	  = 1	
++b0	= 0		b1	= 0 		  keta 	  = -0.04	
++vsat   = vsat_zn	rdsw 	= rdsw_zn	  wr	  = 1		
++prwb	= 0		prwg	= 0		  pclm	  = 1.2 	
++pdiblc1= 0.02		pdiblc2	= 0.002 	  pdiblcb = 0	
++drout	= 0.05		pscbe1	= 4e8		  pscbe2  = 1e-6	
++pvag	= 4 		alpha0	= 2.8e-9	  alpha1  = 0	
++beta0	= 12 		lvsat	= -40000 	  lub	  = 4e-19	
++lu0  	= -17 		wu0	= -50		  wub	  = -5e-19
++wvoff	= -0.08		wvth0	= 0.06
+*
+***************************************************************************
+* Source/Drain Diode Parameters
+***************************************************************************
++tlev    = 0            tlevc   = 1
++eg      = 1.17         gap1    = 4.73E-4      	gap2    = 636
++cj      = cj_zn        pb      = pb_zn        	mj      = mj_zn 
++cjsw	 = cjsw_zn	pbsw    = pbsw_zn      	mjsw	= mjsw_zn 
++cjswg   = cjsg_zn	pbswg	= pbsg_zn      	mjswg   = mjsg_zn 
++xti     = 3.992355     n       = 1             js      = js_zn
++jsw     = jsw_zn       hdif    = hdif_zn       rsh     = 0
++tcj     = cta_zn       tpb     = pta_zn        tcjswg  = tcjsg_zn
++tpbswg  = tpbsg_zn
+*
+***************************************************************************
+* Capacitance-Voltage (CV) Parameters
+***************************************************************************
++capmod  = 2            xpart   = 0             dlc     = (lint_zn+0.1u)
++dwc = (wint_zn-0.29u)  cgdo    = 0             cgso    = 0
++cgsl    = cgsl_zn      cgdl    = cgdl_zn       ckappa  = 0.2158	
++cf      = 0            cgbo    = 0             acde    = 1.49
++llc     = 0            lwc     = 0             lwlc    = 0
++wlc     = 0            wwc     = 0             wwlc    = 0
+*
+***************************************************************************
+* Jds/Vt Temperature Parameters
+***************************************************************************
++prt     = -83.6197     kt1     = -0.28		kt1l    = -9.061e-10
++kt2     = -3e-2 	ute     = -1.8	   	ua1     = 1.e-9
++ub1     = -2.5e-18 	uc1     = -7.0e-11 	at      = 20000 
+*
+***************************************************************************
+* Flicker Noise Parameters
+***************************************************************************
++noimod  = 2             noia   = (3e20*noi_mul)   kf   = 0  
++noib = (1.4e4*noi_mul)  noic   = (4e-14*noi_mul)  em   = 4.1e7
++ef      = 1.1           af     = 1     
+*
+***************************************************************************
+* NFET BSIM3v3.2.4 Model
+***************************************************************************
+model nch bsim3v3         type    = n
++version = 3.24           tnom    = 25             tox     = tox_zn
++xj      = 2.5e-7         nch     = 4e17           vth0    = 0.3 
++k1      = 0.4113668      k2      = -4.193665e-3   k3      = 71.7016064
++k3b     = 4.1195251      w0      = 6.894474e-6    nlx     = 2.544e-7
++dvt0w   = -9.47588       dvt1w   = 7.18e6         dvt2w   = -0.122689
++dvt0    = 0.86732        dvt1    = 0.3417608      dvt2    = -0.025578
++wuc     = -4.229e-11     u0      = u0_n           ua      = 2.655969e-11
++ub      = 2.010666e-18   uc      = 8.583045e-11   vsat    = vsat_n
++a0      = 1.7822307      ags     = 0.458          b0      = -1e-5
++b1      = 1.858424e-5    keta    = 0.0367807      a1      = 1.163811e-4
++a2      = 0.4094019      rdsw    = rdsw_n         prwg    = 0.0364393
++prwb    = 0.3070473      wr      = 1              wint    = -0.3e-6 	  
++lint    = 0.08e-6        lketa   = -8.146047e-3   wvsat   = -1.16e4
++dwg     = -1.349276e-8   dwb     = -1.962061e-8   voff    = -0.1196149
++nfactor = 1.2627444      cit     = 0              cdsc    = 6.112059e-4
++cdscd   = 4.866317e-4    cdscb   = 6.588718e-6    eta0    = 0.731184
++etab    = -0.482545      dsub    = 1.2            pclm    = 1.2549289
++pdiblc1 = 7.151277e-3    pdiblc2 = 0.01           pdiblcb = -0.1340178
++drout   = 0.0354765      pscbe1  = 2.172099e9     pscbe2  = 4.705556e-7
++pvag    = -0.1734725     delta   = 5.387e-3       ngate   = 1.07e20
++alpha0  = 3.7e-5         beta0   = 24             paramchk= 0
++alpha1  = 0              wk3     = -48.3014794    binunit = 1
++lua     = -3.38571e-13   lub     = -5.69110e-20   luc     = 1e-11
++lrdsw   = -8.6425836     lu0     = 4              lk1     = 1.600877e-3
++lags    = 0.1553066      wu0     = -54.7975915    wb0     = 3.56386e-7
++wl      = 0              wln     = 0.172078       ww      = -1e-14
++ll      = 0              lw      = 0              lwn     = 2.4e-3
++wrdsw   = 6.98681        ww0     = -6.027438e-7   wk3b    = 15
+*
+***************************************************************************
+* Source/Drain Diode Parameters
+***************************************************************************
++tlev    = 0              tlevc   = 1
++eg      = 1.17           gap1    = 4.73E-4        gap2    = 636
++cj      = cj_n           pb      = pb_n           mj      = mj_n
++cjsw    = cjsg_n         pbsw    = pbsg_n         mjsw    = mjsg_n
++cjswg   = cjsg_n         pbswg   = pbsg_n         mjswg   = mjsg_n
++xti     = 3              n       = n_n            hdif    = 0
++js      = js_n           jsw     = jsw_n          rsh     = 0
++tcjswg  = tcjsg_n        tpbswg  = tpbsg_n
+*
+***************************************************************************
+* Capacitance-Voltage (CV) Parameters
+***************************************************************************
++capmod  = 2              xpart   = 0              dlc     = lint_n
++dwc     = (wint_n-0.05u) cgdo    = cgdo_n         cgso    = cgso_n
++cgsl    = cgsl_n         cgdl    = cgdl_n         ckappa  = 6.7867
++cf      = 0              cgbo    = 1.706e-11      acde    = 1.2
++llc     = 0              lwc     = 0              lwlc    = 0
++wlc     = 0              wwc     = 0              wwlc    = 0
+*
+***************************************************************************
+* Jds/Vt Temperature Parameters
+***************************************************************************
++prt     = 0              ute     = -2             kt1     = -0.2822
++kt1l    = -7.255572E-9   kt2     = -0.0546805     ua1     = 1.747122E-9
++ub1     = -4.46008e-18   uc1     = -2.09724e-10   at      = 8.881118E4
++wute    = 0.09
+*
+***************************************************************************
+* Flicker Noise Parameters
+***************************************************************************
++noimod  = 2               noia   = (0.9e21*noi_mul)  noib = (0.5e5*noi_mul)
++noic = (-0.4e-12*noi_mul)  em    = 7.0e6             af   = 1
++ef      = 0.95             kf    = 0
+*
+***************************************************************************
+* Extrinsic Source/Drain Diode Model
+***************************************************************************
+model ndio  diode         level   = 1              tnom    = 25
++xti     = 3              tlev    = 0              tlevc   = 1
++eg      = 1.17           gap1    = 4.73E-4        gap2    = 636
++is      = js_n           isw     = jsw_n          n       = n_n
++cjo     = cj_n           vj      = pb_n           m       = mj_n
++cjsw    = cjsw_n         vjsw    = pbsw_n         mjsw    = mjsw_n
++rs      = 120p           imax    = 1e10           imelt   = 1e12
++cta     = cta_n          ctp     = ctp_n          pta     = pta_n
++ptp     = ptp_n
+*
+***************************************************************************
+ends zvtnfet

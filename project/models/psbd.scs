@@ -1,0 +1,219 @@
+* Path, Component, Release: cmrf7sf/rel/Spectre/models/psbd.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.2 10/05/10 14:48:38
+*
+*>  IBM CMRF7SF  psbd        P-type Schottky Barrier Diode 
+*
+*******************************************************************************
+*
+*  SYNTAX:  Specify anode width, length, and # anodes
+*
+*           xxx ( c a tw) psbd     <- Default:  5.0u x 5.0u anode
+*            +         w = 5.0u    <- Drawn anode width  (anode only)
+*            +         l = 5.0u    <-   "     "   length      "
+*            +        nf = 1       <- # anode stripes
+*            +         m = 1       <- Device implicit multiplicity
+*	     +       par = 1       <- Explicit device multiplicity.
+*            +     dtemp = 0       <- Device temperature difference with respect to
+*                                     the simulated circuit temperature (deg C).
+*
+* NOTES:
+*
+*  1. Each Cathode has a wrap-around anode.
+*
+* SUBCIRCUIT SCHEMATIC:
+*
+*               Gleak
+*                / \
+*            +--/   \---+
+*            |  \   /   |
+*            |   \ /    |
+*            |          |
+*            |          |
+*            +          +---+ ai
+*            |          |   |
+* c       top|          |   |
+* O-\/\/\----+          |   |                                 
+*    rmc     |          |   |               aii              bot    rma   a
+*            |   | /|   |   +----\/\/\-------+-------\/\/\----+----\/\/\--O
+*            +---|< |---+   |     rai        |        rao
+*                | \|       |                |  
+*                dsbd     __|__            __|__
+*                    dtwa \   /       dtwp \   /
+*                          \ /              \ /
+*                         -----            -----
+*                           |                |
+*                           |                |             tw
+*                           +---\/\/\--------+---\/\/\-----O 
+*                          twi   rpi       two    rnw
+*
+*
+* PHYSICAL DEVICE LAYOUT:  (single stripe device)
+*
+*
+*     +---------------------------------------------+
+*     |                                             |
+*     |    +-----------------------------------+    |
+*     |    |                                   |    |
+*     |    |     +-----------------------+     |    |
+*     |    |     |                       |     |    |
+*     |    |     |                       |     |    |
+*     |    |     |       +-------+       |     |    |
+*     |    |     |       | +---+ |       |     |    |
+*     |    |     |       | |   | |       |     |    |
+*     |    |     |       | |   | |       |     |    |
+*     |    |     |       | |   | r       |     r    |
+*     |    |     |       | |   l x       |     n    |
+*     |    |     |       | |   | l       |     o    |
+*     |    |     |       | |   |<-rn2pd->|     l    |
+*     |    |     |       | |   | |       |     |    |
+*     |    |     |       | +-w-+ |       |     |    |
+*     |    |     |       +--rxw--+       |<rnw>|    |
+*     |    |     |                       |     |    |
+*     |    |     |                       |     |    |
+*     |    |     +-----------------------+     |    |
+*     |    |                                   |    |
+*     |    +----------------rnow---------------+    |
+*     |                                             |
+*     +---------------------------------------------+
+*                                                  bf
+*
+* IBM CONFIDENTIAL
+* (C) 2010 IBM Corporation
+*
+********************************************************************************
+simulator lang=spectre
+subckt psbd (c a tw)  
+parameters  w=5.0u  l=5.0u  nf=1  par=1  dtemp=0
+*
+*---- Drawn Geometry ----------------------------------------------------------
++       rxw = w                                // Cathode rx design width
++       rxl = l                                // Cathode rx design length
++       rpw = 0.6u                             // RT rx design width (fixed)
++      rnol = rxl + 2.2u                       // RT rx design outer length
++      rnow = rxw + 2.2u                       // RT rx design outer width
++     rn2rx = 0.50u                            // RT rx to Cathode rx space (average)
++       rnw = 0.6u                             // NW Contact rx size 
++       pww = rnow*nf - ((nf-1)*rpw) + 2.8u    // PW design width
++       pwl = rnol + 2.8u                      // PW design length
+*
+*---- Drawn Geometry + Mask Bias ----------------------------------------------
++        wx = w + delbnp
++        lx = l + delbnp
++      rpwx = rpw + delrx
++      rxwx = rxw + delrx
++      rxlx = rxl + delrx
++     rnowx = rnow + delrx
++     rnolx = rnol + delrx
++    rn2rxx = rn2rx - delrx
++      rnwx = rnw + delrx
++      pwwx = pww - delnw
++      pwlx = pwl - delnw
+*
+*---- Area/Perimeter Calculations ---------------------------------------------
++    arearx = rxwx*rxlx*nf                         // Total cathode rx area
++   perimrx = 2*(rxwx+rxlx)*nf                     // Total cathode rx perim
++    areaca = wx*lx*nf                             // Total cathode area
++   perimca = 2*(wx+lx)*nf                         // Total cathode perim
++    areapw = pwwx*pwlx                            // Total PW area (parasitic)
++   perimpw = 2*(pwwx+pwlx)                        // Total PW perim (parasitic)
+*
+*---- SBD Diode Parameters ----------------------------------------------------
++     mmphi = 0.7071*sqrt(5.2f/areaca)
++  msbdphib = psbdphib + mmphi*mmsbd/(1.11*sqrt(par))  // Include mis-match
++     sbdis = 79.2e4*298.15*298.15*exp(-38.922872*msbdphib)  // SBD Is (A/m**2)
+*
+*---- Anode Resistance Calculations --------------------------------------------
++       lsc = max(wx,lx)
++       wsc = min(wx,lx)
++     prvpw = 0.525n 
+*
++     rundr = pwirs*wsc/((12*lsc+20*wsc)*nf)     
++     rtrap = pwirs/(4*nf)*log(rnowx/rxwx)*log(rnolx/rxlx)/(log(rnowx/rxwx)+log(rnolx/rxlx))
++     rucon = pwirs*rpwx/(6*(rnowx+rnolx)*nf)             
++     ravrt = prvpw/(rpwx*(rnowx+rnolx)*2*nf)           
++      rm1c = m1rs*rxl/(3*(rxw-0.08u)*nf)         // Pcell M1 res. cathode
++      rm1a = m1rs*(rnol-rpw)/(3*0.60u*(nf+1))    // Pcell M1 res. anode
+*
+*---- Triple Well Resistance Calculations -------------------------------------
++       ltw = max(pwwx,pwlx)
++       wtw = min(pwwx,pwlx)
+*
++     runpi = pirs*wtw/(12*ltw+20*wtw)     
++      rnwv = nrnw/(rnwx*(pwwx+pwlx)*2)           
+*
+*---- Temperature Compensation for Reverse Leakage ----------------------------
++   pdeltat = temp-25+dtemp
++  ptkelvin = pdeltat + 298.15
++  lksinha = 0.67*exp(2.0*log(298.15/ptkelvin))
++  lksinhp = 0.67*exp(2.0*log(298.15/ptkelvin))
++  lkprea = psbdlka*arearx*exp(-5e3/ptkelvin)
++  lkprep = psbdlkp*perimrx*exp(-5e3/ptkelvin)
+*
+*---- Subcircuit ----------------------------
+rmc    c    top   resistor r=rm1c  trise=dtemp tc1=tm1rs
+dsbd   ai   top   xsbd  area=areaca pj=perimca trise=dtemp
+Gleak  ai   top   bsource  i=lkprea*sinh(lksinha*v(ai,top)) + lkprep*sinh(lksinhp*v(ai,top))
+dtwa   ai   twi   pdio  area=areapw perim=0 trise=dtemp 
+rai    ai   aii   resistor r=rundr+rtrap+rucon trise=dtemp tc1=0.003
+dtwp   aii  two   pdio  area=1e-15 perim=perimpw trise=dtemp
+rao    aii  bot   resistor r=ravrt trise=dtemp tc1=trsubc
+rma    bot    a   resistor r=rm1a  trise=dtemp tc1=tm1rs
+rpi    twi  two   resistor r=runpi+2*rnwv trise=dtemp tc1=0.002
+rnw    two   tw   resistor r=rnwv  trise=dtemp tc1=tnwrs
+
+model xsbd diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 0.99*msbdphib
++  gap1 = 473u
++  gap2 = 636
++   xti = 2.0
++    is = sbdis
++   isw = 0.2878u*sbdis
++    rs = pvepi*areaca/arearx
++   trs = 0.005
++     n = 1.11
++    ns = 1.11
++   cjo = npsbdcj
++   cta = 0.5m
++    vj = 0.81
++   pta = 0.6m
++     m = 0.83
++  cjsw = npsbdcjp
++  vjsw = 0.83
++  mjsw = 0.3
++    bv = 7.0
++   ibv = sbdis
++  jmax = 1e15
++ jmelt = 1e15
+
+model pdio diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++    is = js_pwi
++   isw = jsw_pwi
++     n = n_pwi
++    ns = n_pwi
++   cjo = cj_pwi
++    vj = pb_pwi
++     m = mj_pwi
++  cjsw = 0.6*cjsw_pwi
++  vjsw = pbsw_pwi
++  mjsw = 0.8*mjsw_pwi
++   cta = cta_pwi
++   pta = pta_pwi
++   ctp = ctp_pwi
++   ptp = ptp_pwi
++    bv = 10.0
++  jmax = 1e15
++ jmelt = 1e15
+
+ends psbd

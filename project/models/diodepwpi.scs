@@ -1,0 +1,79 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/diodepwpi.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.2 11/01/18 17:20:57
+*
+*> IBM 7RF/7WL  diodepwpi  Pwell to N-isolation (PI) Junction Diode
+*
+***********************************************************************
+*
+*  Model can be used in conjunction with the design system extraction
+*  program which calculates/combines junction parasitic capacitance
+*  per node.
+*
+*                  o  pwell (1)
+*                  |
+*                  |
+*                ----
+*                \  /  Dpwpi
+*                 \/          Diode includes junction capacitance,
+*                ----         resistance and sat current parameters.
+*                  |
+*                  |
+*                  o   n-iso (ni)
+*
+***********************************************************************
+*
+*  SYNTAX:     Specify both area and perimeter:
+*              xxx  1 ni  diodepwp1 (area=100p  perim=40u)
+*
+*
+*  NOTES:
+*
+*  1. Node order must be as specified.
+*
+*  2. Units for input parameters are meters**2 (area) and meters (perim).
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*
+***********************************************************************
+simulator lang=spectre
+
+subckt diodepwpi ( 1 ni )
+parameters       area=1p  perim=1u   dtemp=0
+
+dpn   n  ni  dpwpi area=area  perim=perim  trise=dtemp
+rpw   1  n   resistor r=(500p/area)
+
+* P well to N-isolation Diode
+*
+model dpwpi diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++  minr = 1m
++    is = js_pwi
++   isw = jsw_pwi
++     n = n_pwi
++    ns = n_pwi
++   cjo = cj_pwi
++    vj = pb_pwi
++     m = mj_pwi
++  cjsw = cjsw_pwi
++  vjsw = pbsw_pwi
++  mjsw = mjsw_pwi
++   cta = cta_pwi
++   pta = pta_pwi
++   ctp = ctp_pwi
++   ptp = ptp_pwi
++    bv = 10.0
++  jmax = 20e-6/(area*(1 + (jsw_pwi*perim)/(js_pwi*area))) 
++ jmelt = 1e15
+
+
+ends diodepwpi

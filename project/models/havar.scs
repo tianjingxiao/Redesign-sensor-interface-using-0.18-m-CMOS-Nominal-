@@ -1,0 +1,176 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/havar.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.1 09/08/26 07:43:50
+*
+*>  IBM 7RF/7WL  havar     Hyper-Abrupt Junction Varactor Diode
+*
+*******************************************************************************
+*
+* Example Call #1:  Specify anode width, length, and # cathodes
+*  SYNTAX:  xxx ( a ca sx ) havar
+*            +         w = 2u    <- Drawn anode width
+*            +         l = 20u   <-   "     "   length
+*            +        nf = 2     <- # anodes stripes
+*            +       rsx = 50    <- Substrate resistance
+*            +     dtemp = 0     <- Device temp rise from ambient (deg C)
+*            +         m = 1     <- Device multiplicity
+*
+* Example Call #2:  Specify anode width, device capacitance, and # cathodes
+*  SYNTAX:  xxx ( a ca sx ) havar
+*            +         w = 2u    <- Drawn anode width
+*            +         c = 50f   <- Device capacitance (zero bias)
+*            +        nf = 2     <- # anodes stripes
+*            +       rsx = 50    <- Substrate resistance
+*            +     dtemp = 0     <- Device temp rise from ambient (deg C)
+*            +         m = 1     <- Device multiplicity
+*
+* NOTES:
+*
+*  1. Anode-Cathode Layout: both single and multiple anode configurations
+*                           have wrap-around cathodes for each anode.
+*
+*  2. If c is specified in place of l, the anode length is calculated
+*     so as to produce a varactor with a zero-bias capacitance equal to c.
+*     If both l and c are specified, l takes precedence.
+*
+* SUBCIRCUIT SCHEMATIC:
+*                    Gleakx
+*                       / \
+*                 +----/   \------+
+*      a          |    \   /      |
+*      O---\/\/\--+top  \ /       |                               
+*           Rma   |       |\ |    |          ci                   ca
+*                 +-------| >|----+--\/\/\---+---\/\/\--+--\/\/\---O
+*                         |/ |   ai   rci    |    rco  bot   Rmc
+*                      dhavarx               |                          
+*                                          __|__   
+*                                     dnsx  / \   
+*                                          /___\  
+*                                            |      
+*                                            |         sx
+*                                          si+---\/\/\--O
+*                                                 Rsx
+*
+* PHYSICAL DEVICE LAYOUT:  (single stripe device)
+*
+*             /\  +---------------+---------+-------+
+*              |  |               |         |       |
+*              |  |               |         |       |
+*              n  |               |         |       r
+*              s  |               |         |       n
+*              l  |               l         |       l
+*              |  |               |<-rn2rx->|       |
+*              |  |               |         |       |
+*             \/  +--------w------+---------+--rnw--+
+*
+*                 <---------------nsw--------------->
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*
+********************************************************************************
+simulator lang=spectre
+
+subckt havar (a ca sx) 
+parameters   rxw=0.8u  rxl=0u  nastripes=1  cap=0  rsx=50  dtemp=0
+*
+*---- Drawn Geometry ----------------------------------------------------------
++         w = rxw
++         l = rxl
++        nf = nastripes
++ ncstripes = nf+1
++   nspaces = 2*nf
++    delcap = -0.31u
++   cfringe = 85p
++      rxlc = (cap-2*nncphav*(rxw+ndelrx)*nastripes)/(nncahav*nastripes*(rxw+ndelrx)+2*nncphav*nastripes) - ndelrx
++      rxlq = l*(1-(l==0)) + rxlc*(l==0)
++      rxwd = min(w,rxlq)
++      rxld = max(w,rxlq)
++       rnw = 0.60u
++     rn2rx = 0.90u
++     rn2ns = 0.52u
++      rnli = rxld + 2*rn2rx
++      rnwi = rxwd + 2*rn2rx
++       nsw = nf*w + nspaces*rn2rx + ncstripes*rnw + 2*rn2ns
++       nsl = rxlq + 2*(rn2rx+rnw+rn2ns)
+*
+*---- Drawn Geometry + Mask Bias ----------------------------------------------
+*     Geometrical variable names are unchanged, but sheet resistance names are.
+*     delcap is used to calculate the effective area for the capacitance
++      capw = rxwd + delcap + tdelrx
++      capl = rxld + delcap + tdelrx
++      rxwx = rxwd + delrx
++      rxlx = rxld + delrx
++      rnwx = rnw + delrx
++     rnwix = rnwi - delrx
++     rnlix = rnli - delrx
++    rn2rxx = rn2rx - delrx
++      nswx = nsw + delnsti
++      nslx = nsl + delnsti
+*
+*---- Area/Perimeter Calculations ---------------------------------------------
++    arearx = rxwx*rxlx*nf            
++   perimrx = 2*(rxwx+rxlx)*nf    
++    areans = nswx*nslx                   
++   perimns = 2*(nswx+nslx)            
++    areacap = capw*capl*nf            
++   perimcap = 2*(capw+capl)*nf
+*
+*---- Unit Resistance Calculations --------------------------------------------
+* ranod is the resistance of metal connecting anodes
+* rundr is the resistance under the anode, consists of triangles and rectangles in parallel 
+* rtrap is the resistance under the space, which is trapezoidal in shape
+* rucon is the resistance under the cathode contact
+* rvert is the resistance up thru cathode rx
+* rcath is the resistance of metal connecting the cathodes  
++     ramet = m1rs*(rxlq+rn2rx+rnw)/(3*nf*(w+delm1))
++     ravrt = 150p/areacap           
++     rundr = nbnsr*rxwx/((12*rxlx+20*rxwx)*nf)     
++     rtrap = nbnsr/(4*nf)*log(rnwix/rxwx)*log(rnlix/rxlx)/(log(rnwix/rxwx)+log(rnlix/rxlx))
++     rucon = nbnsr*rnwx/(6*(rnwix+rnlix)*nf)             
++     rcvrt = nrnw/(rnwx*(rnwix+rnlix)*2*nf)           
++     rcmet = m1rs*(rxlq+2*rn2rx)/(3*(rnw+delm1)*ncstripes)
+
+*  Subcircuit
+rma      a  top  resistor r=ramet+ravrt  trise=dtemp tc1=tm1rs
+xhaar  top   ai  havarcap  
++     pareac = areacap + phaedge*perimcap
++      ax_ha = 5.1e16*(1.0 + axvar)
++      az_ha = 5.1e16*(1.0 + azvar)
++      ay_ha = 1.2e15*(1.0 + ayvar)
++   lkpre_ha = 1.6e-3*arearx + 12e-9*perimrx
++ satcurr_ha = 71e-9*arearx + 32e-15*perimrx
++    deltemp = temp+dtemp-25
+cfr    top  bot  capacitor c=cfringe*perimcap
+rci     ai   ci  resistor r=rundr+rtrap+rucon trise=dtemp tc1=tnbnsr
+dnsx    si   ci  sxd  area=areans perim=perimns trise=dtemp 
+rco     ci  bot  resistor r=rcvrt  trise=dtemp tc1=tnwrs
+rmc    bot   ca  resistor r=rcmet  trise=dtemp tc1=tm1rs
+rsxx    sx   si  resistor r=rsx
+
+model sxd diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++     n = n_rns
++    ns = n_rns
++    is = js_rns
++   isw = jsw_rns
++    cj = ncjsa
++   cta = cta_rns
++    vj = pb_rns
++   pta = pta_rns
++     m = mj_rns
++  cjsw = ncjsp
++   ctp = ctp_rns
++  vjsw = pbsw_rns
++   ptp = ptp_rns
++  mjsw = mjsw_rns
++  imax = 1e15
++    bv = bv_rns
+
+ends havar

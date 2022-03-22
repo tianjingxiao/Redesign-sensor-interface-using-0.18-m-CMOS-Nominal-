@@ -1,0 +1,173 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/opndres.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.2 09/09/08 09:25:10
+*
+*>  IBM 7RF/7WL  opndres    N+ S/D Resistor
+*
+***********************************************************************
+*
+*  Distributed R-C network which accounts for end resistance effects,
+*  parasitic capacitance and includes a fixed substrate resistance.
+*
+*           Rend       Rmid     Eva     Evb     Rmid       Rend
+*   in  o--/\/\/\--o--/\/\/\--o--l|--o--|l--o--/\/\/\--o--/\/\/\--o  out
+*                  |                 |                 |
+*                  |                 |                 |
+*                ----              ----              ----
+*                 /\  Dsnx          /\  Dsnx          /\  Dsnx
+*                /  \              /  \              /  \
+*                ----              ----              ----
+*                  |                 |                 |
+*                  |                 |                 |
+*                  \                 \                 \
+*                  /  Rg             /  Rg             /  Rg
+*                  \                 \                 \
+*                  |                 |                 |
+*                  o-----------------o-----------------o
+*                                    |
+*                                    |
+*  Parasitic capacitance and         \
+*  resistance is                     / Rsub
+*  divided among diodes in           \
+*  1/6 - 2/3 - 1/6 ratios            |
+*                                    o substrate (sx)
+*
+***********************************************************************
+*
+*  DIMENSIONS: W = Design width  of RX
+*              L = Design length of OP
+*
+*  SYNTAX:     Specify both width and length:
+*              xxx  in out sx  opndres (w=2u  l=5u)
+*
+*       OR     Specify width and resistance:
+*              xxx  in out sx  opndres (w=2u  r=150)
+*
+*  SERIES:        s  --> Defined model parameter,   Reff = Rbar * s
+*
+*  PARALLEL:      m  --> Implicit model parameter,  Reff = Rbar / m
+*
+*              pbar  --> Defined model parameter,   Reff = Rbar
+*
+*               par  --> Explicit device multiplicity (par must equal m in netlist)
+*
+*  OPTIONAL:   dtemp --> Device temperature difference with respect to
+*                        the simulated circuit temperature (deg C).
+*
+*                rsx --> Fixed substrate resistance, default = 50 ohm.
+*
+*  NOTES:
+*
+*  1. Model supports only rectangular resistors with contacts at each
+*     end of the resistor bar. "Dogbone" or multiple tap layouts are 
+*     not supported.
+*
+*  2. Model assumes minimum groundrule spacings used for placing contacts
+*     to calculate the end resistance effects based on OP design length.
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*
+***********************************************************************
+simulator lang=spectre
+
+subckt opndres  (in out sx)  
+parameters      w=2u  l=-1u  r=-1  s=1  pbar=1  dtemp=0  rsx=50  par=1
+*
+* Check for minimum width, calculate effective width
++ opwdth = max(w,0.4u) + opnddwf
+*
+* Calculate op length, assumes w,r and groundrule spacings for contacts
++ rendn = 1u*(exp(opndrenn) + 2.793)
++ pleqn = ((r*pbar*(w+opnddwn) - 2*rendn) / opndrsn) - opnddln
+*
+* Select op length, user input takes precedence over calculated length
++ plnom = max(l,0) + ((l-abs(l))/(2*l))*pleqn
+*
+* Check for minimum length, calculate effective length
++ oplen = max(plnom,0.48u) + opnddlf
+*
+* Resistance calculation
++ rmid = opndrsf * (oplen / opwdth) / 2
++ rend = 1u*(exp(opndrenf) + 2.793) / opwdth
+*
+* Calculate area, perimeter for capacitance
+* Subtract delta w, delta l to obtain drawn dimensions,
+* Then include region outside of op mask
++ opcaplen  = 2 * ((oplen-opnddln) + 2*opendf + (opwdth-opnddwn))
++ opcaparea = ((oplen-opnddln) + 2*opendf) * (opwdth-opnddwn)
+*
+* Partition capacitance area, perimeter
++ ansx = opcaparea / 3
++ pnsx = opcaplen  / 3
+*
+* Mis-match Calculation
++ opma   = opndma * opndma / (oplen * opwdth * 1e12)
++ opml   = opndml * opndml / (opwdth * oplen * oplen * 1e18)
++ opmw   = opndmw * opndmw / (opwdth * opwdth * 1e12)
++ op3sig = 0.01 * sqrt(opma + opml + opmw)
++ opmm   = op3sig * 0.7071 / sqrt(s*pbar*par)
++ mmatr  = 1 + (opmm * mmres)
+*
+* Effective resistance from local conductance
++ rg = 1/(9.4e2*opwdth + 3.3e2*oplen)
+*Flicker Noise
++ lnoi = oplen - opnddlf
++ wnoi = opwdth - opnddwf
++ rtot = 2*rmid+2*rend
++ k1 = exp(log(6e-24)+dnoind*log(6))*(pow(wnoi/lnoi,1.45))*(rtot/rmid)*(rtot/rmid)/(wnoi*wnoi)/(s*pbar)
+
+* Resistor network
+rea  in   1  resistor  r=rend*mmatr*s/pbar  trise=dtemp  tc1=opndrntc
+reb   5 out  resistor  r=rend*mmatr*s/pbar  trise=dtemp  tc1=opndrntc
+rma   1   2  noise_res r=rmid*mmatr*s/pbar  trise=dtemp  tc1=opndrstc
+rmb   4   5  resistor  r=rmid*mmatr*s/pbar  trise=dtemp  tc1=opndrstc
+
+eva   2   3  3 sx  in  2  pvcvs  coeffs=[0 0 0 0  opndvcr]
+evb   3   4  3 sx  4 out  pvcvs  coeffs=[0 0 0 0  opndvcr]
+
+dnsa  6   1  dnsxa  area=(ansx/2)*s*pbar  perim=(pnsx/2)*s*pbar trise=dtemp
+dnsb  6   3  dnsxa  area=(2*ansx)*s*pbar  perim=(2*pnsx)*s*pbar trise=dtemp
+dnsc  6   5  dnsxa  area=(ansx/2)*s*pbar  perim=(pnsx/2)*s*pbar trise=dtemp
+
+rsb  6  sx  resistor r=rsx
+
+model noise_res resistor
++ l = 1
++ kf = k1
++ af = 2 
++ wdexp = 0
++ ldexp = 0
++ leexp = 0
++ weexp = 0
+
+* N+ to SX Diodes
+*
+model dnsxa diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++    is = js_n
++   isw = jsw_n
++     n = n_n
++    ns = n_n
++    rs = 3*rg*ansx
++   cjo = cj_n
++   cta = cta_n
++    vj = pb_n
++   pta = pta_n
++     m = mj_n
++  cjsw = cjsw_n
++   ctp = ctp_n
++  vjsw = pbsw_n
++   ptp = ptp_n
++  mjsw = mjsw_n
++    bv = 11.5
++  imax = 1e15
+
+ends opndres

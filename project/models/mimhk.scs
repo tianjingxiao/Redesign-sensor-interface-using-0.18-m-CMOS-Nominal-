@@ -1,0 +1,191 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/mimhk.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.1.2.1 09/12/03 17:42:06
+*
+*>  IBM 7RF/7WL  mimhk          Single MIM Capacitor
+*
+***********************************************************************
+*
+* The model is comprised of a capacitor and series resistance and inductance.
+* The input (lower plate) has losses to substrate characterized by a capacitor
+* and series resistor.
+*
+*
+*       R1                 |------|      R2
+*                   | |    |  L1  |     
+*  o--/\  /\---|----| |----|      |----/\  /\--o
+*  in   \/     |    | |    |------|      \/   out
+*              |
+*            -----
+*            -----  C3
+*              |
+*              |
+*              \
+*              /  R3
+*              \
+*              |
+*              |  reference plane
+*   o----------|-------------------------------o
+*                                
+***********************************************************************
+*
+*  DIMENSIONS: W, L = Design length of Qx
+*
+*  SYNTAX:     Specify both length and width:
+*              xxx  in out ref  mim (l=100u w=100u)
+*
+*       OR     Specify length and capacitance:
+*              xxx  in out ref  mim (l=100u c=5p)
+*
+*  OPTIONAL:   est   --> Include estimated bottom plate to substrate (or BB
+*                        or N-well) capacitance (default, est=1). Turn
+*                        switch off (est=0) for extracted layout.
+*
+*              lm    --> Specifies last metal back end of the line option.
+*                        Dual metal (lm=0), AM (default, lm=1) or ML (lm=2)
+*
+*              nlev  --> Indicates total # of metal levels (default, nlev=4)
+*                        Possible values = 3 (AM,ML), 4, 5, 6, 7 or 8 (DM).
+*
+*             setind --> User determined value for the parasitic inductance.
+*                        The default value of -2, which is used as a switch,
+*                        forces the calculated inductance to be used.
+*
+*	     par (m) --> Device multiplicity (par must equal m in netlist).
+*
+*              dtemp --> Device temperature difference with respect to
+*                        the simulated circuit temperature (deg C).
+*
+*	          bp --> Switch for different backplate options. 
+*			 (bp=1 Nwell, bp=2 BB, bp=3 substrate, bp=7 pc).
+*
+*    (7WL only)   ti --> Specifies "ref" node as TI groundplane (ti=1)
+*                        or substrate groundplane (default, ti=0).
+*
+*
+*  NOTES:
+*
+*  1. Node assignment  - Node "in"  = lower metal plate
+*                      - Node "out" = upper metal plate
+*
+*  2. Model assumes the following design/process targets:
+*     - MIM area capacitance = 4.10 mF/meter**2
+*
+*  3. Estimated bottom plate parasitic capacitance calculation assumes
+*     no devices placed under the MIM. Accurate parasitic capacitance
+*     value for cases with devices under MIM can only be obtained from
+*     extracted layout.
+*
+*  4. The parasitic inductance included in this model is for the MIM only,
+*     It does not include any connections to the MIM.
+*     The inductance assumes the wiring is into the MIM on one side
+*     and out of the MIM on the opposite side. These two sides are assumed
+*     to be sides defined by the parameter w. For any other connection
+*     the inductance would be different than the model indicates.
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*                                
+***********************************************************************
+simulator lang=spectre
+
+subckt mimhk ( in out ref )
+parameters l=100u w=-0.5 c=-0.5 rsx=50 est=1 lm=1 nlev=4 setind=-2 dtemp=0 bp=3 par=1 ti=0
+*
+* Last metal, Q level switch settings
++  dm     = (lm==0)
++  am     = (lm==1)
++  ml     = (lm==2)
+*
++  qlev   = nlev-1-dm
++  q2     = (qlev==2)
++  q3     = (qlev==3)
++  q4     = (qlev==4)
++  q5     = (qlev==5)
++  q6     = (qlev==6)
++  q10	  =  (ti==1) * (bp==7)
+*
+* Flag set to 1 if an invalid q level was selected by user
++  q_error =  (1 - (q2 + q3 + q4 + q5 + q6)*(1 - q10))
+*
+* Calculate width of device
++  pl  = l + delmq
++  lnb = l + ndelmq
++  wx1 = (c-(2*lnb*nchkmimp))/(nchkmima*lnb+2*nchkmimp)-ndelmq
++  wx2 = (c-(2*lnb*nchkmimp*0.85))/(nchkmima*lnb+2*nchkmimp*0.85)-ndelmq
++  geosw1 = (wx1>=8u)*(wx2>=8u)*(l>=8u)
++  wx  = geosw1*wx1 + (1-geosw1)*wx2
++  npw = max(w,0) + abs(w-abs(w))*wx
++  pw  = npw + delmq
++  geosw = (npw>=8u)*(l>=8u)
+*
+* Calculate bottom plate dimensions
++  plmbot = pl - delmq + 4.0u + delmt
++  pwmbot = pw - delmq + 4.0u + delmt
+*
+* Mis-match Calculation
++  mma   = (2.25) / (npw*l * 1e12)
++  mmw   = (0.0) / (npw*npw * 1e12)
++  mml   = (12.25) / (l*l * 1e12)
++  m3sig = 0.01 * sqrt(mma+mmw+mml) * 0.7071 / sqrt(par)
++  mmatc = 1 + (m3sig * mmcap)
+*
+* Calculate total capacitance
++  mimcp = geosw*chkmimp + (1-geosw)*chkmimp*0.85
++  pctot = (chkmima*pl*pw + mimcp*2*(pl+pw)) * mmatc * (1-q_error)
+*
+* Calculate number of FT vias present
++  nftw1  = (int((npw-0.915u*(1-dm))/(4.32u*(1-dm)+5.24u*dm)))
++  nftw2  = ((l<=7.95u)*1+(l>7.95u)*(1*dm+2*(1-dm)))
++  nftw   = geosw*nftw1 + (1-geosw)*nftw2
++  nftl1  = (int((l-0.915u)/4.32u))
++  nftl2  = ((l<=7.95u)*1+(l>7.95u)*2)
++  nftl   = geosw*nftl1 + (1-geosw)*nftl2
++  nfttot = nftw * nftl
+*
+* Via and wiring resistance calculations
++  prvia  = prvft/nfttot
++  prqthr = 10.0e-11/(pw*pl)
++  prwir  = (2*dm*e1rs + am*amrs + ml*mlrs)*pl/pw // Top Plate resistance
++  prtop  = prvia + (prwir/3) + prqthr
++  prbot  = (mtrs*pl/pw) / 3                      // Bottom Plate resistance
+*
+* Calculate the inductance of the MIM
++  indtopam = 0.2u*((2/3)*pl)*(log(2*(pl)/(pw+amt))+0.5+(pw+amt)/(3*(pl)))
++  indtopml = 0.2u*((2/3)*pl)*(log(2*(pl)/(pw+mlt))+0.5+(pw+mlt)/(3*(pl)))
++  indtope1 = 0.2u*((2/3)*pl)*(log(2*(pl)/(pw+e1t))+0.5+(pw+e1t)/(3*(pl)))
++  indtop   = am*indtopam + ml*indtopml + dm*indtope1
++  indbot   = 0.2u*((2/3)*plmbot)*(log(2*(plmbot)/(pwmbot+mtt))+0.5+(pwmbot+mtt)/(3*(plmbot)))
++  plind    = (setind>=0)*setind + (setind<0)*(indtop+indbot)
+*
+* Calculate the stack height to groundplane from MIM bottom plate
++  h =  (oppcstif+oppcthk)*(1-(bp==7))+capct+m1t+(qlev>2)*(m1m2t+m2t)+(qlev>3)*(m2m3t+m3t)+(qlev>4)*(m3m4t+m4t)+(qlev>5)*(m4m5t+m5t)+(mxmtt)*(qlev>2)+(m1m2t)*(qlev==2)
+*
+* Calculate effective stack height reduction due to M1,M2,M3 and M4 fill
++  mflfrac = 0.45
++  mtldt    = -2*mflfrac*(m1t*(qlev>1)+m2t*(qlev>2)+m3t*(qlev>3)+m4t*(qlev>4)+m5t*(qlev>5))   
+*
+* Calculate effective stack height reduction due to RX fill 
++  rxflfrac = 0.45
++  rxdt     = -2*rxflfrac*oppcstif
+*
+* Calculate total effective stack height delta
++  totdt  = mtldt+(tih*(ti==1)+rxdt*(ti==0))*(1-(bp==7))
+*
+* Calculate effective stack height
++  heffec = h+totdt
+*
+* Calculate area and perimeter capacitance
++  cmbot  = e0*4.438/heffec
++  cmfbot = e0*4.438*(2*0.525/(pi-2)*log(pi/2)+2*3.150/pi*log(1+mtt/heffec))
++  pcref  = plmbot*pwmbot*cmbot + 2*(plmbot+pwmbot)*cmfbot
+
+model capx capacitor c=1.0f coeffs=[-290e-6 230e-6] tc1=193e-6
+
+r1   in   1  resistor  r=max(0.001,prbot)    tc1=0.0033  trise=dtemp
+xc1  1    2  capx      c=pctot                           trise=dtemp
+l1   2    3  inductor  l=plind                           trise=dtemp
+r2   3  out  resistor  r=max(0.001,prtop)    tc1=0.0033  trise=dtemp
+c3   1    4  capacitor c=max(0.01f,(pcref*est))          trise=dtemp
+r3   4  ref  resistor  r=rsx                             trise=dtemp
+
+ends mimhk

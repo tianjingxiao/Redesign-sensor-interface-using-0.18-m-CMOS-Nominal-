@@ -1,0 +1,163 @@
+* Path, Component, Release: cmrf7sf/rel/Spectre/models/rr_serpentine.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.2 11/08/26 13:48:56
+*
+*>  IBM CMRF7SF  rr_serpentine  RR Serpentine Poly Res
+*
+***********************************************************************
+*
+*  Distributed R-C network which accounts for end resistance effects,
+*  parasitic capacitance and includes a fixed substrate resistance.
+*
+*
+*           Rend        Rmid                    Rmid        Rend    
+*  in  o--/\/\/\--o---/\/\/\---------o---------/\/\/\---o--/\/\/\--o  out
+*                 |                  |                  |
+*                 |                  |                  |
+*               ----               -----              -----
+*          Cpcx ----          Cpcx -----         Cpcx -----
+*                 |                  |                  |
+*                 |                  |                  |
+*                 \                  \                  \
+*             Rg  /               Rg /               Rg /
+*                 \                  \                  \
+*                 |                  |                  |
+*                 o------------o-----o-----o------------o
+*                              |           |
+*   Parasitic capacitance is   \           |
+*   divided among C elements   / Rsub    ----- Csub
+*   in 1/6 - 2/3 - 1/6 ratios  \         -----
+*                              |           |
+*                              o-----o-----o
+*                                    |
+*                                    o  substrate (sx)
+*
+*********************************************************************
+*
+*  DIMENSIONS:  w = Design width  of PC between 0.18u < W < 0.32u
+*              bl = Design length of each Bar of PC 
+*	       ns = Number of Bars in the Serpentine  
+*
+*  SYNTAX:     Specify width,length and Number of Bars:
+*              xxx  in out sx rr_serpentine (w=0.18u bl=5u ns=10)
+*
+*       OR     Specify width, Number of Bars and resistance:
+*              xxx  in out sx rr_serpentine (w=2u r=9.0k ns=10)
+*
+*  OPTIONAL:   dtemp --> Device temperature difference with respect to
+*                        the simulated circuit temperature (deg C).
+*
+*                 sh --> Self-heating switch, default = 1
+*                        No self-heating effects => sh=0
+*
+*                rsx --> Substrate resistance, default = -1
+*                        -1 = model estimate based on groundplane, substrate options
+*                         0 = substrate model (sxmodel) to be placed by user
+*                        >0 = user-defined value
+*
+*                 bp --> Specify groundplane, bp=3 (SX), default
+*                                             bp=2 (BB), bp=1 (NW)
+*
+* IBM CONFIDENTIAL
+* (C) 2011 IBM Corporation
+*                                
+***********************************************************************
+simulator lang=spectre
+
+subckt rr_serpentine  (in out sx)
+parameters  w=0.18u  bl=-1u  ns=2  r=-1  sh=1  bp=3  dtemp=0  rsx=-1  par=1
+*
+* Check for minimum width, calculate effective width
++ opwdth = max(w,0.18u) + oprrdwf
+*
+* Check for minimum bars
++ opbars = max(ns,1) 
+*
+* Calculate op length, assumes w,r and groundrule spacings for contacts
++ pleqn  = ((r*(w+oprrdwn) - 2*opserend - oprrrsn*(2*w + 0.56u + (ns-1)*0.125u))/(ns*oprrrsn)) + 2*w
+*
+* Select op length, user input takes precedence over calculated length
++ plnom = max(bl,0) + ((bl-abs(bl))/(2*bl))*pleqn
+*
+* Check for minimum length, calculate effective length
++ oplen = max(plnom,1.1u) 
+*
+* Resistance calculation
++ rmid = oprrrsf*((oplen-2*opwdth)*opbars + 2*opwdth + 0.56u + (opbars-1)*0.125u) / (2*opwdth)  
++ rend = opserendf / opwdth
++ rtot = 2*rmid + 2*rend
+*
+* Substrate resistance and capacitance calculations
++ ptnw = (bp==1)
++ ptbb = (bp==2)
++ ptsx = (bp==3)
++ prsx = ((ptnw+ptsx)*50 + ptbb*500)*(rsx==-1) + 1m*(rsx==0) + rsx*(rsx>0)
++ prho = (ptnw+ptsx)*rsub + ptbb*rsubbb
++ pcsx = (e0*ersi*prho)/prsx
+*
+* Calculate Area and Perimeter of the serpentine for capacitance calculations 
++ opserperm = 2*(oplen-opwdth)*opbars + 2*(opbars-1)*(0.24u+opwdth) + 2*0.56u
++ opserarea = (opwdth*oplen)*opbars + (opbars-1)*0.24u*opwdth + 0.56u*opwdth
+* 
+* Partition capacitance area, perimeter
++ apcx = opserarea / 3
++ ppcx = opserperm / 3
++ aend = 2*(0.64u*opwdth + 0.32u*1.2u)
++ pend = 2*(2*0.64u + 2*(0.32u+1.2u))
+*
+* Mis-match Calculation
++ opma   = oprrsma * oprrsma / (oplen * opwdth * 1e12)
++ opml   = oprrsml * oprrsml / (oplen * oplen * 1e12)
++ opmw   = oprrsmw * oprrsmw / (opwdth * opwdth * 1e12)
++ op3sig = 0.01 * sqrt(opma + opml + opmw)
++ opmm   = op3sig * 0.7071 / sqrt(opbars*par)
++ mmatr  = 1 + (opmm * mmres)
+*
+* Effective resistance from conductance
++ rg = 1
+*
+* Flicker Noise
++ lnoi = opserperm/2.0
++ wnoi = opwdth - oprrdwf
++ k1 = 40e-23*(rtot/rend)*(rtot/rend)/(wnoi*lnoi)
+*
+* The voltage coefficients take into effect self-heating
++ usesh = ((gsh==1)&&(sh==1))||(gsh==2)    
++ psh = usesh*opsershk * exp(opsershm*log(opserarea*1e12)) / (2*rmid*opserarea*1e12)
++ pshsp = 3 * (rtot/rmid) * (rtot/rmid) * psh
+*
++ pdeltat = temp-25+dtemp
++ rmidt = rmid*(1.0+(oprrtc1*pdeltat)+(oprrtc2*pdeltat*pdeltat))
+*
+* Resistor network
+
+rea1 in   1   resn      r=rend*mmatr  trise=dtemp  tc1=oprseretc1 tc2=oprseretc2
+rma  1    3   ressh     r=rmidt*mmatr 
+rmb  3    5   ressh     r=rmidt*mmatr 
+reb1 5   out  resistor  r=rend*mmatr  trise=dtemp  tc1=oprseretc1 tc2=oprseretc2
+
+cpca  1  11  capacitor c=((apcx+aend)*oppcdown + (ppcx+pend)*oppcfrng)/2
+cpcb  3  31  capacitor c=2*(apcx*oppcdown + ppcx*oppcfrng)
+cpcc  5  51  capacitor c=((apcx+aend)*oppcdown + (ppcx+pend)*oppcfrng)/2
+
+rga   11  6  resistor r=6*rg
+rgb   31  6  resistor r=1.5*rg
+rgc   51  6  resistor r=6*rg
+
+rsb    6 sx  resistor  r=prsx
+csb    6 sx  capacitor c=pcsx
+
+*  Resistor model for self-heating
+model ressh resistor
++      r = 1
++ coeffs = [0 pshsp]
+
+model resn resistor
++      l = 1
++     kf = k1
++     af = 2 
++  wdexp = 0
++  ldexp = 0
++  leexp = 0
++  weexp = 0
+
+ends rr_serpentine

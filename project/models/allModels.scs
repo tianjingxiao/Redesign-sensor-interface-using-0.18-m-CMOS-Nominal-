@@ -1,0 +1,91 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/allModels.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.1.1.3 10/04/29 10:55:23
+*
+* *****************************************************************************
+*
+*>  IBM 7RF / 7WL    Spectre model library file to define include statements
+*                    for nominal, fixed corner and Monte Carlo analyses.
+*
+* IBM CONFIDENTIAL
+* (C) 2010 IBM Corporation
+*
+* Licensed Materials - Property of IBM
+* US Government Users Restricted Rights - Use, duplication or disclosure
+* restricted by GSA ADP Schedule contract with IBM Corporation.
+*
+* *****************************************************************************
+*
+* *****************************************************************************
+library global
+*
+***********************************************************************
+* "TT" corner : Nominal (default) process and Monte Carlo analyses
+***********************************************************************
+section tt
+include "fixed_corner.scs" section=tt
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection tt
+*
+***********************************************************************
+* "FFF" functional corner : "Fast" NMOS, "Fast" PMOS
+***********************************************************************
+section fff
+include "fixed_corner.scs" section=fff
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection fff
+*
+***********************************************************************
+* "SSF" functional corner : "Slow" NMOS, "Slow" PMOS
+***********************************************************************
+section ssf
+include "fixed_corner.scs" section=ssf
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection ssf
+*
+***********************************************************************
+* "FS" corner : "Fast" NMOS, "Slow" PMOS
+***********************************************************************
+section fs
+include "fixed_corner.scs" section=fs
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection fs
+*
+***********************************************************************
+* "SF" corner : "Slow" NMOS, "Fast" PMOS
+***********************************************************************
+section sf
+include "fixed_corner.scs" section=sf
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection sf
+*
+***********************************************************************
+* "FF" corner : "Fast" NMOS, "Fast" PMOS
+***********************************************************************
+section ff
+include "fixed_corner.scs" section=ff
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection ff
+*
+***********************************************************************
+* "SS" corner : "Slow" NMOS, "Slow" PMOS
+***********************************************************************
+section ss
+include "fixed_corner.scs" section=ss
+include "process.scs"
+include "process_psp.scs"
+include "models.scs"
+endsection ss
+*
+endlibrary

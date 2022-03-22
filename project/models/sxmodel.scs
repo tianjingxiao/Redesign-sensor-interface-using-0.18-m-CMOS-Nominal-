@@ -1,0 +1,202 @@
+* Path, Component, Release: cmrf7sf/relAM/Spectre/models/sxmodel.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.1 11/08/26 12:19:42
+*
+*>  IBM CMRF7SF  sxmodel    R-C Model for Substrate Impedance
+*
+***********************************************************************
+*
+*   Licensed Materials - Property of IBM
+*
+*   IBM CONFIDENTIAL
+*   (C) 2011 IBM Corporation
+*
+*   US Government Users Restricted Rights - Use, duplication
+*   or disclosure restricted by GSA ADP Schedule contract with
+*   IBM Corporation.
+*
+************************************************************************
+*
+*  R-C model to account for substrate loss effects.  Can specify the
+*  following combinations of inputs:
+*    c - specify C and rsx will be calculated from a knowledge of the
+*        substrate resistivity and dielectric relaxation frequency.
+*    r - specify R and csx will be calculated from a knowledge of the
+*        substrate resistivity and dielectric relaxation frequency.
+*  l,w,p- Specify length, width and perimeter in mks units. csx will be
+*        calculated assuming that the capacitance is between the top
+*        surface of the silicon substrate and the conductive backside.
+*        rsx  will be calculated from a knowledge of the substrate resistivity
+*        and dielectric relaxation frequency based on the calculated csx.
+*        Perimeter can be specified separately to allow user to correctly
+*        account for shared perimeters.
+*  l,w,l2,w2,s- Specify length, width, length2, width2 and spacing in mks units. 
+*        csx will be calculated assuming the coupling eqns for the two devices. 
+*        rsx  will be calculated from a knowledge of the substrate resistivity
+*        and dielectric relaxation frequency based on the calculated csx.        
+* cpart- capacitance partitioning coefficient.  Used with L, W, and P when
+*        total capacitance between device area and the chip backside.  This
+*        parameter allows user to account for the affect of nearby ground
+*        returns.  These will tend to pull electric field up and keep it from 
+*        terminating on the chip backside, reducing the effective capacitance.
+*        A value of 0.4 would reduce the total downward fringe component of 
+*        capacitance to 40% of full value.
+*   bp-  Specify groundplane, default bp=3  (SX)
+*                                     bp=2  (BB)
+*                                     bp=1  (NW)
+*                                     bp=-5 (Hi-Res)
+* dtemp- Device temperature difference with respect to the simulated circuit temperature (deg C).
+*
+*            rsx
+*   a  o-+-/\/\/\--+-o   b
+*        |   | |   |
+*        +---| |---+
+*            | |
+*            csx
+*
+***********************************************************************
+*
+*  SYNTAX:     Specify Capacitance:
+*              xxx  in out  sxmodel (c=15f)
+*
+*       OR     Specify Resistance:
+*              xxx  in out  sxmodel (r=15k)
+*
+*       OR     Specify Length, Width and (optionally) Perimeter:
+*              xxx  in out  sxmodel (l=1u w=1u p=4u)
+*
+*       OR     Specify Length, Width, Perimeter and capacitance Partitioning:
+*              xxx  in out  sxmodel (l=1u w=1u p=4u cpart=0.5)
+*
+*       OR     Specify Length, Width, Length2, Width2, and Spacing:
+*              xxx  in out  sxmodel (l=1u w=1u l2=1u w2=1u s=1u)
+*
+*       OR     Specify Capacitance, Reff, and Treff:
+*              xxx  in out  sxmodel (c=15f reff=10 treff=0.01)
+*
+*  NOTES:
+*
+*  1. Temperature effects accounted for assuming no "freeze-out" effects.
+*     This may not be a good assumption and needs to be experimentally
+*     verified.
+*
+***********************************************************************
+*
+simulator lang = spectre
+*
+subckt sxmodel  (a b)
+* Input parameters:
+parameters
++ c      =   1f   // [F] capacitance
++ r      =  -1    // [Ohms] resistance
++ l      =  -1    // [m] length of device over substrate
++ w      =  -1    // [m] width of device over substrate
++ p      =  -1    // [m] perimeter of device area over substrate
++ cpart  =  -1    // capacitance partitioning parameter
++ l2	 =  -1	  // [m] length of device2 over substrate
++ w2	 =  -1	  // [m] width of device2 over substrate
++ s	 =  -1	  // [m] spacing between the two device
++ bp     =   3    // substrate type:
++ dtemp  =   0    // Localized temperature offset.
+*--------------------------------------------------------------------
+*
+* set treff and speed of light
++     c0 = 1.0/sqrt(e0*mu0)
++  treff = trsub
+*
+* set effective substrate resistivity based on passed in reff
++  prho  = ((bp==1)+(bp==3))*rsub + (bp==2)*rsubbb + (bp==-5)*rsubhr 
+*
+* calculate material constant permitivity x rho
++  const = ersi*e0*prho
+*
+* set area and perimeter to 0 if length and width are not passed
++  area  = (l > 0)*(w > 0) * l * w
++  perim = (p >= 0) * p + (p < 0)*(l > 0)*(w > 0) * 2*(l+w)
++  area2 = (l2 > 0)*(w2 >0)*(s > 0) * l2 * w2
+*
+* make sure length is long dimension for greater accuracy in capacitance calculation
++  plen   = (l >= w) * l + (l < w) * w
++  pwidth = (w >= l) * l + (w < l) * w
+*
+* calculate capacitance partitioning coefficient
++   cpartition = (area > 0)*(perim > 0) * cpart + (area == 0)
+*
+* if r is passed set pcap = const / r
++   pcap = (r > 0) * const/r
+*
+********************************************************************************
+* The following code calculates the area capacitance of a thin plate conductor *
+* at the silicon surface over a groundplane at the wafer backside.  Since the  *
+* aspect ratio (height/width) is so large, the resulting capacitance is        *
+* primarily fringe.  This fact required the use of some fundamental equations. *
+* These equations were derived from Wheeler, ""Transmission Line Properties    *
+* of a Strip on a Dielectric Sheet on a Plane," TRANSACTIONS ON MICROWAVE      *
+* THEORY AND TECHNIQUES, MTT-25 NO.8, AUGUST 1977.                             *
+********************************************************************************
+*
+* handle wafer thickness
++   h = 1.0e-6*waferthk
+*
+* assume infinitely thin conductive plate at silicon surface
++   deltaw = 0
+*
+* calculate characteristic impedance of line over silicon substrate
++   erk = ersi
++   wprimek = pwidth / 25.4e-3 + (deltaw * (1 + 1 / erk) / 2)
++   alphak = 4 * h / 25.4e-3 / wprimek
++   betak = (14 + (8 / erk)) / 11
++   rk = (42.4 / sqrt(erk + 1)) * log(1 + alphak * (betak * alphak + sqrt(betak**2 * alphak**2 + (pi**2) * (1 + (1 / erk)) / 2)))
+*
+* calculate characteristic impedance of line over air
++   er1 = 1
++   wprime1 = pwidth / 25.4e-3 + (deltaw * (1 + 1 / er1) / 2)
++   alpha1 = 4 * h / 25.4e-3 / wprime1
++   beta1 = (14 + (8 / er1)) / 11
++   r1 = (42.4 / sqrt(er1 + 1)) * log(1 + alpha1 * (beta1 * alpha1 + sqrt(beta1**2 * alpha1**2 + (pi**2) * (1 + (1 / er1)) / 2)))
+*
+* capacitance per unit length for a microstrip line of length
+* convert back to cap per meter
++   capplustwofringe = (r1 / ((c0 / 25.4e-3) * rk**2)) / 25.4e-3
++   areacap = e0 * ersi * pwidth  * plen / h
++   fringecap = (capplustwofringe * plen - areacap) / 2 / plen
+*
+*
+********************************************************************************
+* Capacitance between two contacts at surface                      *
+********************************************************************************
+* if (l,w),(l2,w2) and s are passed then calculate the capacitance by using equation
+* calculate aspect ratios
++   dw = abs(w-w2)*1e6
+*
++   lterm = max(1e-12,(l/2 + l2/2 +s )*1e6)
++   fact  = (3.84e-6)/s
++   mult  = 0.086
+*
+* Find the smaller geometry as the width multiplier for equation
++  weq = (w <= w2) * w + (w2 < w) * w2
+*
+* Scaling factor for dw
++  mult10 = (((l <= 10u) || (l2 <= 10u))) * 0.63
++  mult40 = mult10 + ((l >= 40u && l2 >10u) || (l2 >= 40u && l >10u)) * 2.6
++   mult1 = mult40 + ((l > 10u && l2 >10u) && (l2 < 40u && l < 40u))*1.67
+*
+* Equivalent capacitance
++   ceq = (fact) * e0 * ersi * log(1+lterm*mult) * weq  + mult1* e0 * ersi * log(1+dw)*1e-6
+*
+*
+********************************************************************************
+* Capacitance between two contacts at surface                      *
+********************************************************************************
+*
+* now decide which capacitance value to use
+* if area is passed in calculate capacitance, otherwise use passed in c value or passed in r value
++   cap = (area == 0)*(area2==0)*((r<0)*c + (r>0)*pcap) + (area > 0)*(area2 == 0)*(areacap + (cpartition*perim*fringecap)) + (area > 0)*(area2 > 0)*ceq
+*
+* now calculate r based on RC=const
++   res = const / cap
+*
+* R-C netlist
+rsx   a b   resistor   r=max(res,10u)  tc1=treff trise=dtemp
+csx   a b   capacitor  c=max(cap,1f)
+*
+ends sxmodel

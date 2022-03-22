@@ -1,0 +1,367 @@
+* Path, Component, Release: cmrf7sf/rel/Spectre/models/vlnpn.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.4 10/05/13 12:13:09
+*
+*>  IBM CMRF7SF  vlnpn      Vertical Lateral NPN  -- BJT Model
+*
+*******************************************************************************
+*
+* SYNTAX: xxx ( c b e g s ) vlnpn
+*            +      exw = 0.18u   <- Base width
+*            +      exl = 10u     <- Emitter length
+*            + nstripes = 1       <- Number of emitter stripes (1-5)
+*            +       sh = 1       <- Self-heating switch (0->off , 1->on)
+*            +       ii = 1       <- Impact-ionization switch (0->off , 1->on)
+*            +       bv = 1       <- Breakdown warning switch (0->off , 1->on)
+*            +      par = 1       <- Device multiplicity
+*            +    dtemp = 0       <- Device temp rise from ambient (deg C)
+*
+* NOTES:
+*
+*  1. Single stripe layout (nstripes=1):  CV-B-CL-E-CL-B-CV
+*     Double stripe layout (nstripes=2):  CV-B-CL-E-CL-E-CL-B-CV
+*     Note: Lateral (CL) and Vertical Collectors (CV) are hardwired together
+*           within the physical device layout.
+*
+*  2. Model Features:
+*       a. Parasitic vertical PNP to substrate
+*       b. Weak avalanche multiplication (BC impact-ionization)
+*       c. Self-heating model
+*       d. Fixed oxide capacitances for BE and BC junctions
+*       e. Quasi-saturation modeling
+*
+*  3. This model was optimized using the self-heating and impact-ionization
+*     switches active.  If these switches (sh & ii) are not enabled, then
+*     the output characteristics of this model may not accurately represent
+*     hardware.  These switches have been provided in order to allow the
+*     designer to improve simulation time by deactivation of these options
+*     for non-critical devices.  It is left to the designer to determine
+*     when these options may or may not be needed.
+*
+*  4. The substrate resistance (rsx) is calculated based on the dimensions
+*     of the substrate ring in the device library PCELL.
+*
+*
+* SUBCIRCUIT SCHEMATIC:
+*
+*                 O c
+*                 |
+*                 |
+*  g              |
+*  O--------+     |
+*            \ | /
+*  b          \|/             s
+*  O-----------|--------------0
+*              |\
+*             q| \
+*                 |
+*                 |
+*                 |
+*                 |
+*                 O e
+*
+*
+* Layout diagram:
+*
+*             VLNPN Layout
+*    ------------------------------------------------------------------ /\
+*    |  PI |  Base |     | Coll |g| Emit |g| Coll |     |  Base | PI  | |
+*    |     |       |     |      | |      | |      |     |       |     | |
+*    |     |       |     |      | |      | |      |     |       |     | |
+*    |     |       | STI |      | |      | |      | STI |       |     | |length
+*    |     |       |     |      | |      | |      |     |       |     | |
+*    |     |       |     |      | |      | |      |     |       |     | |
+*    |     |       |     |      | |      | |      |     |       |     | |
+*    |  PI |  Base |     | Coll |g| Emit |g| Coll |     |  Base | PI  | |
+*    ------------------------------------------------------------------ \/
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2010 IBM Corporation
+*
+*******************************************************************************
+simulator lang=spectre
+
+subckt vlnpn  (c b e g s)
+parameters
++      exw = 0.18u       // Base width
++      exl = 10u         // Emitter length
++ nstripes = 1           // Number of emitter stripes (1-5)
++       sh = 1           // Self-heating switch (0->off , 1->on)
++       ii = 1           // Impact-ionization switch (0->off , 1->on)
++       bv = 1           // Breakdown warning switch (0->off , 1->on)
++      par = 1           // Device multiplicity
++    dtemp = 0           // Device temp rise from ambient (deg C)
+*
+*---- Effective Area, Perimeter Dimensions ------------------------------------
+*
++     delw = 2*lint_n             // lint_n has tolerance built in
++       wx = exw + delw
++       lx = exl + delrx          // lx (rx) +bias+tol
++   lenjun = lx*nstripes*2
++    perim = lenjun
++      lpi = exl + (2*2.56u)
++      wpi = 2.88u + (1.88u*(nstripes-1)) + 4.72u
++      lnw = exl + (2*1.56u)
++      wnw = 2.88u + (1.88u*(nstripes-1)) + 2.64u
++      lsx = lx + 9.84u
++      wsx = 2.88u + (1.88u*(nstripes-1)) + 9.36u
++    areae = lx * (0.52u-delw) * nstripes
++   perime = (lx + (0.52u-delw)) * 2 * nstripes
++    nresq = (0.16u-(delw/2)) / (2*lx*nstripes)
++   areasc = lpi * wpi
++   perisc = 2*(lpi + wpi)
++   areanw = lnw * wnw
++   perinw = 2*(lnw + wnw)
++       lb = exl + (2*0.92u)
++       wb = 2.88u + (1.88u*(nstripes-1)) + (2*0.72u)
++   ddepth = 0.2u
++   areaba = ((lenjun+1.5u) * ddepth)
++   periba = lenjun
++      wrx = 2.88u + (1.88u*(nstripes-1))
+*
+*---- Mis-match Calculation ----------------------------------------------------
+*
+*-- Vbe Mis-match Scaling Factors --
++    pismm = 0.12*((1u/(perim*par))**0.30)     // vbe mis-match scaling
++    pmmez = mmez
+*
+*-- Beta Mis-match Calculation --
++    xbadj = 0.65*((1u/(perim*par))**0.57)     // beta mis-match scaling
++    pmmbf = 1 + xbadj*mmbf
+*
+*---- Emission Coefficients ---------------------------------------------------
++      pnf = vlpnf              // fwd emission
++      pnr = vlpnf-0.017        // rev emission
++     pnen = 2.0                // BE, non-ideal emission leakage
++     pnei = 1.0                // Base current, ideal emission leakage
++     pnci = 1.020              // BC, ideal emission
++     pncn = 2.0                // BC, non-ideal emission leakage
++     pnfp = 1.000              // BC, ideal emission
+*
+*---- VLNPN Saturation Currents ------------------------------------------------
+*
+*---- Lateral NPN --------------------------------------------------------------
++     pibe = vlisc*(1.0 + 0.036*nstripes)*perim
++     pibc = vlisc*(1.0 + 0.036*nstripes)*perim
++      pis = (pibe + pibc)*(1+pismm*pmmez)            // Fwd transport
++    pibei = (vlisbpa*(perime/areae) + vlisbp*perime)/pmmbf // BE, ideal (w/mis-match)
++    piben = 0.1n*(1.0 + 0.15*nstripes*2)*perim       // BE, non-ideal leakage diode
++    pibci = 5.165e-17*perim                          // BC, ideal 
++    pibcn = 5.165e-10*perim                          // BC, non-ideal
+*
+*---- Vertical NPN -------------------------------------------------------------
++    pibev = 8.22n*(1.0 + 0.036*nstripes*2)*areae     // BE, non-ideal
++    pibcv = 0                                        // BC, non-ideal
++     pisv = pibev+pibcv                              // Fwd transport
++   pibeiv = 1.36n*areae                              // BE, ideal
++   pibciv = 5.165e-17*areanw                         // BC, ideal
++   pibcnv = 5.165e-10*areanw                         // BC, non-ideal
++   pibenv = 0.1n*(1.0 + 0.05*nstripes*2)*areanw      // BE, non-ideal leakage diode
++    pwbev = 1
+*
+*---- PNP Saturation Currents -------------------------------------------------
++     pisp = 1.45e-7*areasc                           // fwd transport (PNP)
++   pibeip = 5e-08*areasc                             // BE, ideal (PNP)
++   pibenp = 0                                        // BE, non-ideal (PNP)
++   pibcip = 0                                        // BC, ideal (PNP)
++   pibcnp = 0                                        // BC, non-ideal (PNP)
++     pwsp = 0                                        // portion of Iccp from Vbep (PNP)
+*
+*---- Knee Currents -----------------------------------------------------------
++    pikfa = 3.857e+9
++    pikfp = -7.627e+2
++     pikf = (pikfa*areae + pikfp*perim)*(1.0 - 0.035*(nstripes-1))
++     pikr = 2e-4
++     pikp = 5e-5
+*
+*---- Early Voltages ----------------------------------------------------------
++     pvef = vlvef                                   // fwd early
++     pver = 100                                     // rev early
+*
+*---- Emitter Resistance ------------------------------------------------------
++    prtrk = 0.40*((1p/(areae*par))**0.45)           // emit res mis-match
++    pmmre = 1 + prtrk*mmre
++   prseff = opndrsf/1.5                             // effective n+ s/d sheet rho
++     prex = max(1u,(20.25*prseff*pmmre*nresq))      // lat emit res
++   preffv = 16u/(lx*nstripes)
++    prexv = max(1u,(preffv*pmmre))                  // vert emit res
+*
+*---- Collector Resistance ----------------------------------------------------
++     prci = (prseff*0.4u)/(lx*2*nstripes)           // lat coll res
++     prcx = 0
+*
++       pa = 1.88u/0.52u                             // prism width ratio, length ratio=1
++    prciv = max(0.1,(((623u/0.52u*1.3u)*(log(pa)/(pa-1)))/nstripes))  // vert intr coll res
++   prcpi1 = pirs*2.78u/(2*(lx+2*2.02u))             // extr coll res leading up to NW edge
++   prcpi2 = pirs*1.88u*(nstripes-1)/(12*lx)         // extr coll res between emits
++    prcnw = nrnw/(2*1.5u*((lx+(1.78u*2))+(wrx+(2.02u*2)))) // coll res NW vertical
++    prcxv = prcpi1+prcpi2+prcnw                     // total extr coll res
+*
+*---- Base Resistance ---------------------------------------------------------
++     prbi = 2.076m/(2*lx*nstripes)                  // lat intr base res
++      pr1 = pwirs*(2.1u/lx)
++      pr2 = pwirs*(1.36u/lx)
++     prbb = pr1/2 + pr2*((nstripes-1)/12)           // lat extr base res
++    prbiv = 0.1                                     // vert base res
+*
+*---- Parasitic PNP Base Resistance -------------------------------------------
++     prbp = 1                    // parasitic base res (PNP)
+*
+*---- Substrate Resistance ----------------------------------------------------
++      tsx = 500u                 // estimated substrate thickness under PI
++     rsxl = ((rsub/tsx)*(wsx/lsx))/12       // lateral resistance under PI
++     rsxv = rsubc/((wsx+lsx)*0.4u)          // vertical resistance (P+ sx contact)
++     prsx = rsxl + (rsxv/2)                 // substrate res
+*
+*---- Base-Emitter Capacitance ------------------------------------------------
++      pfc = 0.9                  // fwd bias depl cap limit
++     pcje = 0.75*cjsg_n*perim    // lat base-emit capacitance
++     pvje = pbsg_n               // base-emit built-in potential
++     pmje = mjsg_n               // base-emit junction exponent
+*
++    pcjev = (cj_n*0.52u*lx + cjsw_n*2*0.52u)*nstripes  // vert base-emit cap
++    pvjev = pb_n                 // base-emit built-in potential
++    pmjev = mj_n                 // base-emit junction exponent
+*
+*---- Base-Coll Capacitance ---------------------------------------------------
++  pccbint = 0.75*cjsg_n*lx*2*nstripes
++  pccbext = cj_n*1u*lx*(nstripes+1) + cjsw_n*2*(lx+1u*(nstripes+1))
++    pcjep = 1.25*pccbext         // lat extr base-coll capacitance
++     pcjc = pccbint              // lat intr base-coll capacitance
++     pvjc = pb_n                 // base-coll built-in potential
++     pmjc = mj_n                 // base-coll junction exponent
+*
++  pcwell  = cj_pwi*(lx+3.12u)*(5.52u+(1.88u*(nstripes-1))) + cjsw_pwi*2*((lx+3.12u)+(5.52u+(1.88u*(nstripes-1))))
++    pcjcv = pcwell               // vert base-coll cap
++    pvjcv = pb_pwi               // base-coll built-in potential
++    pmjcv = mj_pwi               // base-coll junction exponent
+*
+*---- SC Capacitance ----------------------------------------------------------
++    pcjcp = cj_pix*areasc + cjsw_pix*perisc         // SC zero-bias cap
++      pps = pb_pix                                  // SC built-in potential
++      pms = mj_pix                                  // SC grading coeff 
++     pajs = -0.5                                    // SC cap smoothing factor
+*
+*---- Transit Times ----------------------------------------------------------
++      ptf = vlntf - 20n*perim       // base time
++      ptr = 50p
++     pxtf = 20
++     pitf = 1.0e3*perim
++     pvtf = 0.1
++     pptf = 25
++      ptd = ptf*pptf*pi/180
+*
+*---- Current Limits ----------------------------------------------------------
++    pimax = 1                         // max allow base current
++   pimelt = 10                        // explosion current
+*
++    tempk = temp+dtemp+273.15         // temp in Kelvin
++  pdeltat = temp-25+dtemp             // delta T from reference
+*
+*---- Noise Model -------------------------------------------------------------
++     xkfn = 7.34e-12
++     xkfa = 0.01                      // emitter area scaling
++     pkfn = xkfn*(1u/perim)**xkfa     // 1/f noise coeff (was 1p/areae)
++     pafn = 1.6                       // 1/f noise exponent
++     pbfn = 1                         // 1/f noise dependence
+*
+*---- Weak Avalanche Multiplication
++    useii = ((gii==1)&&(ii==1))||(gii==2)  // impact-ionization switch
++    pavc1 = useii*2.0               // avalanche current parm
++    pavc2 = useii*vlavc2            // avalanche voltage parm
++    prhot = 180p/perim              // hot carrier resistance (SGP)
+*
+*---- Self Heating ------------------------------------------------------------
++     usesh = ((gsh==1)&&(sh==1))||(gsh==2)    // self-heating switch
++    pdtmax = 1000                             // max temp rise, 1000C
++     pwrth = 5.0e-5
++     perth = 0.635
++      prth = usesh*(pwrth/(areae**(perth)))   // thermal resistance
++      pcth = usesh*(0.21u/(prth+1m))          // 210ns time constant
+*
+*---- Temperature Coefficients ------------------------------------------------
++     pxis = 4.30                              // temp exp of is
++     pxii = 3.35                              // temp exp of ibei, ibci, ibeip, ibcip
++      pea = 1.12                              // activation enery for is
++    peaie = 1.12                              // activation enery for ibei
++    peaic = 1.12                              // activation enery for ibci,ibeip
++    peais = 1.12                              // activation enery for ibcip
++    peane = 1.12                              // activation enery for iben
++    peanc = 1.12                              // activation enery for ibcn,ibenp
++    peans = 1.12                              // activation enery for ibcnp
++     ptnf = 0u                                // temp coeff of nf
++    ptavc = 0                                 // temp coeff of avc2
++    ptikf = 0.35m                             // ikf temp coeff
++    pikft = pikf*(1+ptikf*pdeltat)
++     pttf = 2.6m                              // tf temp coeff
++     ptft = ptf*(1+pttf*pdeltat)
++     ptfc = -1.0m                             // fc temp coeff
++     pfct = min(0.99,(pfc*(1+ptfc*pdeltat)))
+*
++    ptrbb = 2m                                // extr rb temp coeff
+*
+*---- Collector-Emitter Poly overlap Capacitance -------------------------------
++     pceo = (lx*(oppcdown*0.1u + 2*oppcfrng))*nstripes // estimate of pc to emit overlap cap
++     pcco = (2*lx*(oppcdown*0.1u + oppcfrng))*nstripes // estimate of pc to coll overlap cap
++     pcbo = wx*lx*oppcdown*2*nstripes                  // estimate of pc to intrinsic base overlap cap
+*
+*---- Line-to-Line and Overlap wiring parasitic Capacitance --------------------
++     llm1 = 2*(lx+(2*0.56u))
++     lwm1 = 2*(wrx+(2*0.48u))-1.32u
++ pcbm1gm1 = (llm1*0.33u*3.63e-11)/0.2u + (lwm1*0.33u*3.63e-11)/0.36u  // estimate of BaseM1-GateM1 line-line cap
++ pccm1em1 = ((lx*2*nstripes)*0.33u*3.63e-11)/0.22u                    // estimate of CollM1-EmitM1 line-line cap
++     lem2 = ((lx+1.12u)/(1+(nstripes/(nstripes+1))))-1.12u            // length of emitter M2
++     lcm2 = ((lx+1.12u)/(1+((nstripes+1)/nstripes)))-1.12u            // length of collector M2
++ pcem2cm1 = lem2*0.72u*(nstripes+1)*9.08e-5                           // estimate of EmitM2/CollM1 overlap cap
++ pccm2em1 = lcm2*0.72u*nstripes*9.08e-5                               // estimate of CollM2/EmitM1 overlap cap
+*
+*---- VLNPN Model --------------------------------------------------------------
+qln   (c  bi  e  s)  qlnpn  m=par trise=dtemp
+qvn   (c  bi  e  s)  qvnpn  m=par trise=dtemp
+
+*---- VLNPN PC-Emit, PC-Coll, PC-Base overlap cap and Wiring parasitics --------
+ceo   (g  e)   capacitor c=pceo                        m=par trise=dtemp
+cco   (g  c)   capacitor c=pcco                        m=par trise=dtemp
+cbo   (g  bi)  capacitor c=pcbo                        m=par trise=dtemp
+cbg   (g  b)   capacitor c=pcbm1gm1                    m=par trise=dtemp
+cce   (c  e)   capacitor c=pccm1em1+pcem2cm1+pccm2em1  m=par trise=dtemp
+
+*---- VLNPN Extrinsic Resistances ----------------------------------------------
+rbb   (b  bi)  resistor r=prbb tc1=ptrbb  m=par trise=dtemp
+
+model qlnpn vbic
++ type=npn version=1.15 tnom=25 imax=pimax imelt=pimelt dtmax=pdtmax selft=usesh
++ is=pis nf=pnf nr=pnr vef=pvef ver=pver ibei=pibei nei=pnei
++ iben=piben ibci=pibci ibcn=pibcn nfp=1 nen=pnen nci=pnci ncn=pncn
++ ikf=pikft ikr=pikr ikp=0 avc1=pavc1 avc2=pavc2
++ rbi=prbi rbx=0 rbp=prbp re=prex rcx=prcx rci=prci
++ gamm=0 qco=0 vo=0
++ cje=pcje pe=pvje me=pmje fc=pfct cbeo=0 cjc=pcjc
++ cjep=pcjep pc=pvjc mc=pmjc cbco=0
++ tf=ptft tr=ptr td=ptd xtf=pxtf vtf=pvtf itf=pitf
++ xis=pxis xii=pxii
++ ea=pea eaie=peaie eaic=peaic eais=peais eane=peane eanc=peanc eans=peans
++ xre=0 xrb=0 xrc=0 xrs=0 kfn=pkfn afn=pafn bfn=pbfn
++ tnf=ptnf tavc=ptavc rth=prth cth=pcth
++ wbe=1 isp=0 ibcip=0 ibcnp=0 ibeip=0 cjcp=0 rs=0
++ imeltrci=no
+
+model qvnpn vbic
++ type=npn version=1.15 tnom=25 imax=pimax imelt=pimelt dtmax=pdtmax selft=usesh
++ is=pisv nf=pnf nr=pnr vef=pvef ver=pver ibei=pibeiv nei=pnei
++ iben=pibenv ibci=pibciv ibcn=pibcnv isp=pisp nfp=pnfp ibeip=pibeip 
++ nen=pnen nci=pnci ncn=pncn
++ ikf=pikft ikr=pikr ikp=pikp avc1=pavc1 avc2=pavc2
++ rbi=prbiv rbx=0 rbp=prbp re=prexv rs=prsx rcx=prcxv rci=prciv
++ gamm=0 qco=0 vo=0
++ cje=pcjev pe=pvjev me=pmjev fc=pfct cbeo=0 cjc=pcjcv
++ cjep=0 pc=pvjcv mc=pmjcv cbco=0 cjcp=pcjcp ps=pps ms=pms
++ tf=ptft tr=ptr td=ptd xtf=pxtf vtf=pvtf itf=pitf
++ xis=pxis xii=pxii
++ ea=pea eaie=peaie eaic=peaic eais=peais eane=peane eanc=peanc eans=peans
++ xre=0 xrb=0 xrc=0 xrs=0 kfn=pkfn afn=pafn bfn=pbfn
++ tnf=ptnf tavc=ptavc rth=0 cth=0
++ wbe=pwbev ibcip=pibcip ibcnp=pibcnp
++ imeltrci=no
+
+ends vlnpn

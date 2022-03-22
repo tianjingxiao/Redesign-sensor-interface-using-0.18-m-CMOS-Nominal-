@@ -1,0 +1,233 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/sbd.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.1 09/07/30 13:10:32
+*
+*>  IBM 7RF/7WL  sbd          Schottky Barrier Diode
+*
+*******************************************************************************
+*
+*  SYNTAX:  Specify anode width, length, and # anodes
+*
+*           xxx ( a c s ) sbd      <- Default:  5.0u x 5.0u anode
+*            +         w = 5.0u    <- Drawn anode width  (anode only)
+*            +         l = 5.0u    <-   "     "   length      "
+*            +        nf = 1       <- # anode stripes
+*            +       rsx = 50      <- Substrate resistance
+*            +   m (par) = 1       <- Device multiplicity (par must equal m in netlist)
+*            +     dtemp = 0       <- Device temperature difference with respect to
+*                                     the simulated circuit temperature (deg C).
+*
+* NOTES:
+*
+*  1. Each Anode has a wrap-around cathode.
+*
+* SUBCIRCUIT SCHEMATIC:
+*
+*               Gleak
+*                / \
+*            +--/   \---+
+*            |  \   /   |
+*            |   \ /    |
+*            |          |
+*            |   |\ |   |
+*            +---| >|---+                   cio
+*            |   |/ |   |   +----\/\/\-------+-------\/\/\----+ 
+* a       top|   dsbd   |   |     rcoh                rcov    |bot        c
+* O-\/\/\----+          +---+ ci                              +----\/\/\--O
+*    rma     |          |   |               cii               |     rmc
+*            |   |\ |   |   +----\/\/\-------+-------\/\/\----+
+*            +---| >|---+         rcih       |        rciv
+*                |/ |                        |  
+*                dgr                       __|__
+*                                       dsx / \
+*                                          /___\
+*                                            |
+*                                            |
+*                                            O s
+*
+* PHYSICAL DEVICE LAYOUT:  (single stripe device)
+*
+*
+*     +---------------------------------------------+
+*     |                                             |
+*     |                                             |
+*     |    +-----------------------------------+    |
+*     |    |                                   |    |
+*     |    |                                   |    |
+*     |    |     +-----------------------+     |    |
+*     |    |     |                       |     |    |
+*     |    |     |                       |     |    |
+*     |    |     |                       |     |    |
+*     |    |     |       +-------+       |     |    |
+*     |    |     |       | +---+ |       |     |    |
+*     |    |     |       | |   | |       |     |    |
+*     |    |     |       | |   | |       |     |    |
+*     |    |     |       | |   | r       |     r    |
+*     |    |     |       | |   l x       |     n    |
+*     |    |     |       | |   | l       |     o    |
+*     |    |     |       | |   |<-rn2pd->|     l    |
+*     |    |     |       | |   | |       |     |    |
+*     |    |     |       | +-w-+ |       |     |    |
+*     |    |     |       +--rxw--+       |<rnw>|    |
+*     |    |     |                       |     |    |
+*     |    |     |                       |     |    |
+*     |    |     |                       |     |    |
+*     |    |     +-----------------------+     |    |
+*     |    |                                   |    |
+*     |    |                                   |    |
+*     |    +----------------rnow---------------+    |
+*     |                                             |
+*     |                                             |
+*     +---------------------------------------------+
+*                                                  bf
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*
+********************************************************************************
+simulator lang=spectre
+
+subckt sbd (a c s)
+parameters w = 5.0u l = 5.0u nf = 1 rsx = 50 par=1 dtemp = 0
+//--- Drawn Geometry ----------------------------------------------------------
++   nspaces = nf - 1
++       rxw = w + 1.20u                     // Anode rx design width
++       rxl = l + 1.20u                     // Anode rx design length
++       rnw = 0.60u                         // RT rx design width (fixed)
++      rnol = rxl + 2.80u                   // RT rx design outer length
++      rnow = rxw + 2.80u                   // RT rx design outer width
++     rn2pd = 1.40u                         // RT rx to BN space (fixed)
++     rn2rx = 0.80u                         // RT rx to Anode rx space 
++       nsw = rnow*nf - ((nf-1)*rnw)        // NS Subcollector design width
++       nsl = rnol                          // NS Subcollector design length
+//
+//--- Drawn Geometry + Mask Bias ----------------------------------------------
++        wx = w + delbn
++        lx = l + delbn
++      rnwx = rnw + delrx
++      rxwx = rxw + delrx
++      rxlx = rxl + delrx
++     rnowx = rnow + delrx
++     rnolx = rnol + delrx
++    rn2pdx = rn2rx - (delbn + delrx)/2
++    rn2rxx = rn2rx - delrx
++      nswx = nsw
++      nslx = nsl
+//
+//--- Area/Perimeter Calculations ---------------------------------------------
++    arearx = rxwx*rxlx*nf                  // Total anode rx area
++   perimrx = 2*(rxwx+rxlx)*nf              // Total anode rx perim
++    areaan = wx*lx*nf                      // Total anode area
++   periman = 2*(w+1.0u+delrx+l+1.0u++delrx)*nf // Total anode perim
++    areagr = arearx-areaan                 // Total guardring area
++   perimgr = 2*(w+l)*nf                    // Total guardring inside perim
++    areans = nswx*nslx                     // Total NS area (parasitic)
++   perimns = 2*(nswx+nslx)                 // Total NS perim (parasitic)
+//
+//--- SBD Diode Parameters ----------------------------------------------------
++     mmphi = 0.0054*(((1u/wx)**0.7) + 5*((1u/lx)**0.7))
++  msbdphib = sbdphib + mmphi*mmsbd/sqrt(par)         // Include mis-match
++     sbdis = s_sbdif*120e4*(pow((temp+dtemp+273),2))*exp(-38.6*msbdphib) // SBD Is (A/m**2)
+//
+//--- Unit Resistance Calculations --------------------------------------------
++       rci = nvepi/(wx*lx)                 // Ver under anode
++     rcigr = nvepigr/(rxwx*rxlx-wx*lx)     // Ver under guardring
++       lsc = max(wx,lx)
++       wsc = min(wx,lx)
++      rchl = nbnsr*((rn2pd+(wsc/8))/(rnolx-(lsc-(wsc/4))))*log(rnolx/(lsc-(wsc/4)))
++      rchw = nbnsr*((rn2pd+(wsc/8))/(rnowx-(wsc-(wsc/4))))*log(rnowx/(wsc-(wsc/4)))
++      rcxl = nrnw/(rnwx*rnolx)             // Ver under cathode, length
++      rcxw = nrnw/(rnwx*rnowx)             // Ver under cathode, width
++     rccom = (rchl/2)+rcxl                 // L side res. (common side)
++       rcl = rchl+rcxl                     // L side res. (non-common side)
++       rcw = rchw+rcxw                     // W side res.
+//
+//--- Model Resistance Calculations -------------------------------------------
++       rav = (rci)/nf                      // Ver under anode
++     ravgr = (rcigr)/nf                    // Ver under guardring
++      rm1a = (((rxlx/(rxwx-0.2u))/3)/nf)*m1rs      // Pcell M1 res. anode
++      rm1c = ((((rnolx-rnw)/0.52u)/3)/(nf+1))*m1rs // Pcell M1 res. cathode
++     rctot = 1/((nf*2/rcw)+(2/rcl)+((nf-1)/rccom)) // Tot feol cathode res.
++     rrcoh = rctot
++     rrcih = rctot
++     rrcov = rctot
++     rrciv = rctot
+//
+//--- Temperature Compensation for Reverse Leakage ----------------------------
++   pdeltat = temp-25+dtemp
++   tselect = ((abs(pdeltat)+pdeltat)/(max(2*pdeltat,1)))
++     tcomp = (1-tselect)*((.01249*pdeltat)+1) + tselect*((9.99*pdeltat)+1)
++       lk1 = 70e-8*((lx+wx)*2*nf)*tcomp
++       lk3 = 40e-9*((lx+wx)*2*nf)*tcomp
+
+model xsbd diode
++ level = 1
++  tlev = 0
++ tlevc = 1
++  tnom = 25
++    eg = 0.55
++   xti = 5.0
++    is = sbdis*areaan
++     n = 1.0354
++    rs = rav
++   trs = 0.002
++    cj = nsbdcj*areaan
++   cta = 2.5m
++    vj = 0.4145
++   pta = 0
++     m = 0.328
++  imax = 1e15
++    bv = 7
+
+model grd diode
++ level = 1
++  tlev = 0
++ tlevc = 1
++  tnom = 25
++    eg = 1.17
++   xti = 3.0
++    is = js_p*areagr
++   isw = jsw_p*perimgr
++     n = n_p 
++    rs = ravgr
++   cjp = nsbdcjp*periman
++   cta = 2.5m
++  vjsw = 0.4220
++   pta = 0.7m
++  mjsw = 0.171
++  imax = 1e15
++    bv = 12.0
+
+model sxd diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++    is = js_ns*areans
++   isw = jsw_ns*perimns
++     n = n_ns
++    cj = cj_ns*areans
++    vj = pb_ns
++     m = mj_ns
++  cjsw = cjsw_ns*perimns
++  vjsw = pbsw_ns
++  mjsw = mjsw_ns
++  imax = 1e15
++    bv = 35
+
+rma   a   top resistor  r=rm1a  trise=dtemp tc1=tm1rs
+dsbd  top ci  xsbd      trise=dtemp area=1 pj=0
+dgr   top ci  grd       trise=dtemp area=1 pj=1
+Gleak top ci  top ci    pvccs coeffs=[0 lk1 0 lk3]
+dsx   si  cii sxd       trise=dtemp area=1 pj=1
+rcoh  ci  cio resistor  r=rrcoh trise=dtemp tc1=tnbnsr
+rcih  ci  cii resistor  r=rrcih trise=dtemp tc1=tnbnsr
+rcov  cio bot resistor  r=rrcov trise=dtemp tc1=tnbnsr
+rciv  cii bot resistor  r=rrciv trise=dtemp tc1=tnbnsr
+rmc   bot c   resistor  r=rm1c  trise=dtemp tc1=tm1rs
+rsxx  s   si  resistor  r=rsx
+
+ends sbd

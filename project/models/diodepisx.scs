@@ -1,0 +1,79 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/diodepisx.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.3 11/01/19 09:20:27
+*
+*> IBM 7RF/7WL  diodepisx  N-isolation (PI) to Sub (SX) Junction Diode
+*
+***********************************************************************
+*
+*  Model can be used in conjunction with the design system extraction
+*  program which calculates/combines junction parasitic capacitance
+*  per node.
+*
+*                  o  n-iso (ni)
+*                  |------------+
+*                  |            |
+*                ----          / \
+*                 /\  Dpisx   /   \ Gleak
+*                /  \         \   /  Diode includes junction capacitance
+*                ----          \ /   and forward bias current parameters.
+*                  |            |
+*                  |------------+
+*                  o  substrate (sx)
+*
+***********************************************************************
+*
+*  SYNTAX:     Specify both area and perimeter:
+*              xxx  sx ni  diodepisx (area=100p  perim=40u)
+*
+*
+*  NOTES:
+*
+*  1. Node order must be as specified.
+*
+*  2. Units for input parameters are meters**2 (area) and meters (perim).
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2011 IBM Corporation
+*
+***********************************************************************
+simulator lang=spectre
+
+subckt diodepisx ( sx ni )
+parameters       area=1p  perim=1u   dtemp=0
+
+dpn   s  ni dpisx area=area  perim=perim  trise=dtemp
+rsx   sx  s resistor r=(500p/area)
+gleak ni sx bsource  i=(5e-2*(sinh(0.001*v(ni,sx))*area) + 11e-8*(sinh(0.005*v(ni,sx))*perim))
+
+* N-isolation to SX Diode
+*
+model dpisx diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++  minr = 1m
++    is = js_pix
++   isw = jsw_pix
++     n = n_pix
++    ns = n_pix
++   cjo = cj_pix
++    vj = pb_pix
++     m = mj_pix
++  cjsw = cjsw_pix
++  vjsw = pbsw_pix
++  mjsw = mjsw_pix
++   cta = cta_pix
++   pta = pta_pix
++   ctp = ctp_pix
++   ptp = ptp_pix
++    bv = 10.0
++  jmax = 20e-6/(area*(1 + (jsw_pix*perim)/(js_pix*area))) 
++ jmelt = 1e15
+
+ends diodepisx

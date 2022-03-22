@@ -1,0 +1,77 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/diodenx.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.4 11/01/19 09:20:20
+*
+*>  IBM 7RF/7WL  diodenx    N+ to Substrate Junction Diode
+*
+***********************************************************************
+*
+*  Model can be used in conjunction with the design system extraction
+*  program which calculates/combines junction parasitic capacitance
+*  per node.
+*
+*                  o  n+ (nd)
+*                  |------------+
+*                  |            |
+*                ----          / \
+*                 /\   Dnsx   /   \ Gleak
+*                /  \         \   /  Diode includes junction capacitance
+*                ----          \ /   and forward bias current parameters.
+*                  |            |
+*                  |------------+
+*                  o  substrate (sx)
+*
+***********************************************************************
+*
+*  SYNTAX:     Specify both area and perimeter:
+*              xxx  1 sx  diodenx (area=1p  perim=4u)
+*
+*
+*  NOTES:
+*
+*  1. Node order must be as specified.
+*
+*  2. Units for input parameters are meters**2 (area) and meters (perim).
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2011 IBM Corporation
+*                                
+***********************************************************************
+simulator lang=spectre
+
+subckt diodenx  (nd sx)
+parameters      area=1p  perim=4u  dtemp=0
+
+dnsa  sx nd  dnsx  area=area  perim=perim  trise=dtemp
+gleak nd sx  bsource  i=2e-4*(sinh(0.5*v(nd,sx))*area)
+
+* N+ to SX Diode
+*
+model dnsx diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++    is = js_n
++   isw = jsw_n
++     n = n_n
++    ns = n_n
++    cj = cj_n
++    vj = pb_n
++     m = mj_n
++  cjsw = cjsw_n
++  vjsw = pbsw_n
++  mjsw = mjsw_n
++   cta = cta_n
++   pta = pta_n
++   ctp = ctp_n
++   ptp = ptp_n
++    bv = 15.0*(esd_event == 0) + 100*(esd_event != 0)
++  jmax = 20e-6/(area*(1 + (jsw_n*perim)/(js_n*area))) 
++ jmelt = 1e15
+
+ends diodenx

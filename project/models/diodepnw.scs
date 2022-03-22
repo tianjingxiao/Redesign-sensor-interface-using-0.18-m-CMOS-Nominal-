@@ -1,0 +1,76 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/diodepnw.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.2 09/11/30 08:44:21
+*
+*>  IBM 7RF/7WL  diodepnw   P+ Diffusion to Nwell Junction Diode
+*
+***********************************************************************
+*
+*  Model can be used in conjunction with the design system extraction
+*  program which calculates/combines junction parasitic capacitance
+*  per node.
+*
+*                  o  p+ (pd)
+*                  |
+*                  |
+*                ----
+*                \  /   Dpnw
+*                 \/          Diode includes junction capacitance
+*                ----         and forward bias current parameters.
+*                  |
+*                  |
+*                  o  n well (nw)
+*
+***********************************************************************
+*
+*  SYNTAX:     Specify both area and perimeter:
+*              xxx  pd nw  diodepnw (area=1p  perim=4u)
+*
+*
+*  NOTES:
+*
+*  1. Node order must be as specified.
+*
+*  2. Units for input parameters are meters**2 (area), meters (perim).
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*                                
+***********************************************************************
+simulator lang=spectre
+
+subckt diodepnw  (pd nw)
+parameters       area=1p  perim=4u  dtemp=0
+
+dpda   pd  nw  dpnw  area=area  perim=perim  trise=dtemp
+
+* P+ to Nwell Diode
+*
+model dpnw diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++     n = n_p
++    ns = n_p
++    is = js_p
++   isw = jsw_p
++    cj = cj_p
++    vj = pb_p
++     m = mj_p
++  cjsw = cjsw_p
++  vjsw = pbsw_p
++  mjsw = mjsw_p
++   cta = cta_p
++   pta = pta_p
++   ctp = ctp_p
++   ptp = ptp_p
++    bv = 10.5*(esd_event == 0) + 100*(esd_event != 0)
++  jmax = 20e-6/(area*(1 + (jsw_p*perim)/(js_p*area))) 
++ jmelt = 1e15
+
+ends diodepnw

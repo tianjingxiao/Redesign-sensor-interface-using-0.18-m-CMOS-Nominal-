@@ -1,0 +1,288 @@
+* Path, Component, Release: cmrf7sf/rel/Spectre/models/zvtnfet33.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.5 10/04/23 08:11:18
+*
+*>  IBM CMRF7SF  zvtnfet33      3.3V Zero-Vt NFET subcircuit
+*
+***************************************************************************
+*
+*  SYNTAX:  xxx ( d g s b ) zvtnfet33 l=nnn w=nnn
+*
+*  REQUIRED:
+*            +        w = nnn  <- Design width of RX (meters)
+*            +        l = nnn  <- Design length of PC (meters)
+*  OPTIONAL:
+*            +       as = 0    <- Source diffusion area (meters^2)
+*            +       ad = 0    <- Drain diffusion area (meters^2)
+*            +       ps = 0    <- Source diffusion perimeter in (meters)
+*            +       pd = 0    <- Drain diffusion perimeter in (meters)
+*            +      nrd = 0    <- Number of squares of drain diffusion
+*            +      nrs = 0    <- Number of squares of source diffusion
+*            +    dtemp = 0    <- Device temp rise from ambient (deg C)
+*            +       nf = 1    <- Number of gate stripes or "fingers" in device
+*            +  m (par) = 1    <- Number of parallel instances (multiplicity)
+*            +     gcon = 1    <- Gate connection switch (1->single-side,
+*                                                         2->double-side)
+*            +      rsx = 50   <- Body resistance
+*
+*  NOTES:
+*
+*  1. If nrd or nrs are not passed to the model they will default to 0.
+*     This will result in 0 ohms of silicided S/D resistance being placed
+*     in series with the device model.
+*
+* SUBCIRCUIT SCHEMATIC:          drain
+*                                  O
+*                                  |
+*                                  |
+*                                  /
+*                           rdext  \        Ddb (Includes regular NFET drain area
+*                                  /             and STI bounded perimeter)
+*                              d1  |__________________|/|__________
+*                                  |          |       |\|          |
+*        Zvt NFET diffusion cap    |          |                    |
+*        terms are included within |  nfet33  |                    |
+*        it's BSIM model       ____|       ___|                    |
+*    gate               g1  | |          ||      |  b1             |     bulk
+*        O-------\/\/\/-----| |         -||      |-------\/\/\/----o-------O
+*              |   rgate    | |____    | ||___   |         rsb     |
+*              |         zvtnfet33 |   |      |                    |
+*              |___________________|___|      |                    |
+*                                  |          |                    |
+*                              s1  |__________|_______|/|__________|
+*                                  |                  |\|
+*                                  \
+*                           rsext  /         Dsb (Includes regular NFET source area
+*                                  \              and STI bounded perimeter)
+*                                  |
+*                                  |
+*                                  O
+*                               source
+*
+* IBM CONFIDENTIAL
+* (C) 2010 IBM Corporation
+*
+***************************************************************************
+*
+simulator lang=spectre
+subckt zvtnfet33 (d g s b)
+parameters
++   w=0 l=0 nf=1 as=0 ad=0 ps=0 pd=0 nrd=0 nrs=0
++      gcon=1 rsx=50 dtemp=0 rf=0 par=1
++   zad=ad zas=as znrd=nrd znrs=nrs zpd=pd zps=ps
+*
+* Zvt within RX spacing (RX width under PC without Zvt)
++  dzvtw = 0.3u
+*
+* Gate bounded perimeter (identical for source and drain)
++  pgate    = (2*dzvtw+ndelrx)
++  pzvtgate = (w-2*dzvtw)
+*
+* STI S/D bounded perimeter (subtract gate bounded from total passed in)
++  pstis = max(0,(zps-(pzvtgate+pgate)))
++  pstid = max(0,(zpd-(pzvtgate+pgate)))
+*
+* Set flags for number of fingers : odd, even or single
++  nfo = (int((nf+1)/2) - int(nf/2))
++  nfe = (1 - nfo)
+* Area of drain, based on number of fingers
++  nade= zad-(0.25u*pzvtgate)
++  nado= (zad*nf-(0.92u*pzvtgate)-(0.25u*pzvtgate*(nf-1)))/nf
++  nad = max(0,(nfe*nade + nfo*nado))
+* Area of source, based on number of fingers
++  nase= (zas*nf-2*(0.92u*pzvtgate)-(0.25u*pzvtgate)*max(0,(nf-3)))/nf
++  naso= (zas*nf-(0.92u*pzvtgate)-(0.25u*pzvtgate*(nf-1)))/nf
++  nas = max(0,(nfe*nase + nfo*naso))
+*
+* Mis-match calculations: function of w, l, nf and multiplicity (par)
++  kvt=0.513e-8    kvtw=1.545e-6      kvtl=0.56e-6
++  kmb=5.5e-6      kmbw=-3.9e-6       kmbl=0.5e-6
++  sigvth  = (kvt/sqrt((w-kvtw)*nf*par*(l-kvtl)))
++  sigbeta = (kmb/sqrt((w-kmbw)*nf*par*(l-kmbl)))
++  mmvth0  = (sigvth * mvth0)          // vth0 mis-match
++  mmbeta  = (sigbeta * mbeta)         // beta mis-match
+*
+* Flicker noise: statistics function of w, l, nf and multiplicity (par)
++  noi_scale = (noistdn-min(log(sqrt(w*l*nf*par/noidevan)),0))
++  noi_mul   = (exp(dnoiz33*noi_scale))
+*
+* Gate resistance calculation for all cases (function of w, l, & nf)
++  rg1=(pcrsi/(nf*gcon))*(0.4u+w/(3*gcon))/(l+lwbpc)
++  rg2=(-3.49+6.97e6*l+0.219m*(1/(w*nf)))
++  rge=(rg1+rg2)
+*
+* Node voltage warning checks
++  pvlim  = 3.6
++  pblim  = 6.0
+*
+if (gbv==2) {
+ vds_check  assert dev=m0 param=vds       min=0 max=pvlim message="Vds exceeds limit" level=warning
+ vgs_check  assert dev=m0 param=vgs       min=-pvlim max=pvlim message="Vgs exceeds limit" level=warning
+ vgd_check  assert dev=m0 expr=(vgs-vds)  min=-pvlim max=pvlim message="Vgd exceeds limit" level=warning
+ vgb_check  assert dev=m0 expr=(vgs-vbs)  min=-pblim max=pblim message="Vgb exceeds limit" level=warning
+ vbs_check  assert dev=m0 param=vbs       min=-pblim message="Vbs exceeds limit" level=warning
+ vbs_chkfwd assert dev=m0 param=vbs       max=fwdlim message="Vbs source-body diode is being forward-biased" level=warning
+ vbd_check  assert dev=m0 expr=(vbs-vds)  min=-pblim message="Vbd exceeds limit" level=warning
+ vbd_chkfwd assert dev=m0 expr=(vbs-vds)  max=fwdlim message="Vbd drain-body diode is being forward-biased" level=warning
+}
+*
+m0 (d1 g1 s1 b1) zvtnch33 w=(w-2*dzvtw) l=l as=(zas-nas) ad=(zad-nad) 
++                         ps=pzvtgate pd=pzvtgate nrd=0 nrs=0 m=nf trise=dtemp
+m1 (d1 g  s1 b2) nch33    w=0.6u l=l as=1e-15 ad=1e-15 ps=pgate pd=pgate
++                         nrd=0 nrs=0 m=nf trise=dtemp
+rgate  g1  g resistor r=rge
+rsb    b  b1 resistor r=rsx
+rsb2   b  b2 resistor r=100
+ddb    b  d1 ndio33 area=nad perim=pstid m=nf trise=dtemp
+dsb    b  s1 ndio33 area=nas perim=pstis m=nf trise=dtemp
+rdext  d1  d resistor r=(znrd*rsh_z33/nf)
+rsext  s1  s resistor r=(znrs*rsh_z33/nf)
+*
+***************************************************************************
+* 3.3V Zero Vt NFET BSIM3v3.2.4 Model
+***************************************************************************
+model zvtnch33 bsim3v3                                 type    = n
++version = 3.24               tnom    = 25             tox     = tox_z33
++xj      = 3e-07              lint    = lint_z33       wint    = wint_z33
++vth0    = (vth0_z33+mmvth0)  u0    = (u0_z33+mmbeta)  nch     = 7.0e16
++vsat    = vsat_z33           w0      = -5e-7          a1      = 1e-12
++k1      = 0.1587             k2      = -9.84e-3       k3      = 25
++k3b     = -5                 binunit = 1              paramchk= 0
++nlx     = 3.798e-7           dvt0    = 0.5775         dvt1    = 0.1525
++dvt2    = -3.114e-3          dvt0w   = 0              dvt1w   = 5.3e6
++dvt2w   = -0.032             drout   = 0.4105         dsub    = 0.6758
++ua      = -40e-15            ub      = 1.917e-18      uc      = 1.862e-11
++a0      = 1.522              ags     = 0.7856         keta    = -0.02554
++mobmod  = 1                  b0      = 7.253e-06      b1      = 3.172e-7
++rdsw    = rdsw_z33           prwg    = -0.01693       prwb    = 0.03675
++eta0    = 0.7805             etab    = 0.05912        pvag    = 9.054
++dwg     = -1.300e-7          dwb     = 1.8e-07        nfactor = 0.5
++voff    = -0.04214           delta   = 0.01           a2      = 0.7348
++cdsc    = 2.4e-4             cdscb   = 0              cdscd   = 0
++pclm    = 15.76              pdiblc1 = 0.2226         pdiblc2 = 2.376e-3
++pdiblcb = 0.1683             pscbe1  = 4e8            pscbe2  = 1.033e-5
++ngate   = 1e20               alpha0  = 9.366e-8
++alpha1  = 0.01502            beta0   = 15.51          wu0     = -265.0
++wvoff   = -0.12              lvoff   = -5e-3          pb0     = 1.5e-5
++pketa   = 0.12               pua     = -5e-10         pub     = 1.47e-18
++wr      = 1                  cit     = 0
+***************************************************************************
+* Source/Drain Diode Parameters
+***************************************************************************
++tlev    = 0                  tlevc   = 1
++eg      = 1.17               gap1    = 4.73E-4        gap2    = 636
++cj      = cj_z33             pb      = pb_z33         mj      = mj_z33
++cjsw	 = cjsw_z33	      pbsw    = pbsg_z33       mjsw    = mjsg_z33
++cjswg   = cjsg_z33	      pbswg	= pbsg_z33     mjswg   = mjsg_z33
++xti     = 3.464156           n       = 1              js      = js_z33
++jsw     = jsw_z33            hdif    = hdif_z33       rsh     = 0
++tcj     = cta_z33            tpb     = pta_z33        tcjswg  = tcjsg_z33
++tpbswg  = tpbsg_z33
+*
+***************************************************************************
+* Capacitance-Voltage (CV) Parameters
+***************************************************************************
++capmod  = 3                  xpart   = 0              dlc = (lint_z33+0.062e-6)
++dwc     = wint_z33           cgdo    = cgdo_z33       cgso    = cgso_z33
++cgsl    = cgsl_z33           cgdl    = cgdl_z33       ckappa  = 0.8	
++cf      = 0                  cgbo    = 0              acde    = 0.6
++voffcv  = 0.03               noff    = 3.5
+*
+***************************************************************************
+* Jds/Vt Temperature Parameters
+***************************************************************************
++prt     = 0                  kt1     = -0.2848        kt1l    = 0
++kt2     = -0.00746           ute     = -1.78          at      = 3.5e4
++ua1     = 1.327e-09          ub1     = -3.394e-18     uc1     = -2.718e-11
++lute    = -0.08              pat     = -5e4
+*
+***************************************************************************
+* Flicker Noise Parameters
+***************************************************************************
++noimod  = 2                  noia = (7.6e20*noi_mul)    kf    = 0
++noib  = (199.1191*noi_mul)   noic = (7.0e-13*noi_mul)   em    = 4.05e7
++ef      = 1.0                af      = 1    
+*
+***************************************************************************
+* NFET33 BSIM3v3.2.4 Model
+***************************************************************************
+model nch33  bsim3v3                               type    = n
++version = 3.24           tnom    = 25             tox     = tox_n33
++xj      = 3e-7           nch     = 4e17           vth0    = vth0_n33
++k1      = 0.847647       k2      = -0.0377794     k3      = 1.0224
++k3b     = 1.87203        w0      = 7.06769e-8     nlx     = 6.354e-8
++dvt0w   = -3.04192       dvt1w   = 2.82524e6      dvt2w   = -0.0329162
++dvt0    = 3.45458        dvt1    = 0.76917        dvt2    = -0.34
++u0      = u0_n33         ua      = 1e-20          ub      = 2.22259e-18
++uc      = 9.71848e-11    vsat    = vsat_n33       a0      = 0.841
++ags     = 0.269886       b0      = 1e-8           b1      = 3.26966e-6
++keta    = -0.0436583     a1      = -0.04          a2      = 1
++rdsw    = rdsw_n33       prwg    = 0.0296206      prwb    = -1e-3
++wr      = 1              wint    = (wint_n33-5e-8) lint    = lint_n33
++dwg     = -7.7612e-9     dwb     = -1.77454e-8    voff    = -0.143184
++nfactor = 0.718384       cit     = 0              cdsc    = 0
++cdscd   = 2.94472e-4     cdscb   = 2.88069e-5     eta0    = 2
++etab    = -0.660586      dsub    = 1.54203        pclm    = 0.693702
++pdiblc1 = 0.0351344      pdiblc2 = 6.19844e-3     pdiblcb = -0.514817
++drout   = 0.29           pscbe1  = 3.66e8         pscbe2  = 4.1074e-5
++pvag    = -0.08          delta   = 5.387e-3       ngate   = 1e20
++alpha0  = 5e-7           alpha1  = 15             beta0   = 24
++mobmod  = 1              lags    = 0.101219       paramchk= 0
++lua     = 1.20862e-10    lub     = -4.59656e-19   luc     = -2.2546e-11
++lu0     = 0.0129723      lvsat   = -0.125921      ww      = -1.91842e-14
++wk3     = -1             wl      = -1.5e-15       wu0     = -96
++wua     = 2.6468e-11     wub     = -2.7727e-19    wuc     = -2.84e-11
+*
+***************************************************************************
+* Source/Drain Diode Parameters
+***************************************************************************
+*
++tlev    = 0              tlevc   = 1
++eg      = 1.17           gap1    = 4.73E-4        gap2    = 636
++cj      = cj_n33         pb      = pb_n33         mj      = mj_n33
++cjsw    = cjsg_n33       pbsw    = pbsg_n33       mjsw    = mjsg_n33
++cjswg   = cjsg_n33       pbswg   = pbsg_n33       mjswg   = mjsg_n33
++xti     = 3              n       = n_n33          rsh     = 0
++js      = js_n33         jsw     = jsw_n33        hdif    = 0
++tcjswg  = tcjsg_n        tpbswg  = tpbsg_n
+*
+***************************************************************************
+* Capacitance-Voltage (CV) Parameters
+***************************************************************************
++capmod  = 2              xpart   = 0              dlc     = lint_n33
++dwc     = (wint_n33-5e-8) cgdo    = cgdo_n33      cgso    = cgso_n33
++cgsl    = cgsl_n33       cgdl    = cgdl_n33       ckappa  = 4.0591
++cf      = 0              cgbo    = 4.532e-11      acde    = 1.2
++llc     = 0              lwc     = 0              lwlc    = 0
++wlc     = 0              wwc     = 0              wwlc    = 0
+*
+***************************************************************************
+* Jds/Vt Temperature Parameters
+***************************************************************************
++prt     = 461.66         ute     = -1.76          kt1     = -0.276254
++kt1l    = -4.18285e-10   kt2     = -0.0103383     ua1     = 1.8e-9
++ub1     = -3.6e-18       uc1     = -1.35e-10      at      = 2.08e4
++lua1    = -1.4e-10       wat     = 2.41e4         wuc1    = -2e-11
++wute    = 0.176          wua1    = -4e-10         wub1    = 1e-18
+*
+***************************************************************************
+* Flicker Noise Parameters
+***************************************************************************
++noimod  = 2              noia = (3.0e19*noi_mul)  noib    = (2.5e5*noi_mul)
++noic = (-3.0e-12*noi_mul)  em    = 5.0e6          af      = 1
++ef      = 1.05             kf    = 0   
+*
+***************************************************************************
+* Extrinsic Source/Drain Diode Model
+***************************************************************************
+model ndio33 diode        level   = 1              tnom    = 25
++xti     = 3              tlev    = 0              tlevc   = 1
++eg      = 1.17           gap1    = 4.73e-4        gap2    = 636
++is      = js_n33         isw     = jsw_n33        n       = n_n33
++cjo     = cj_n33         vj      = pb_n33         m       = mj_n33
++cjsw    = cjsw_n33       vjsw    = pbsw_n33       mjsw    = mjsw_n33
++imax    = 1e10           imelt   = 1e12           rs      = 120p
++cta     = cta_n          ctp     = ctp_n          pta     = pta_n
++ptp     = ptp_n
+*
+***************************************************************************
+ends zvtnfet33

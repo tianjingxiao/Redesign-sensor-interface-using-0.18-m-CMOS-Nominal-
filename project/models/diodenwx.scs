@@ -1,0 +1,78 @@
+* Path, Component, Release: cmrf7sf/rel/Spectre/models/diodenwx.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.4 11/01/19 09:17:20
+*
+*>  IBM CMRF7SF  diodenwx   Nwell to Substrate Junction Diode
+*
+***********************************************************************
+*
+*
+*  Model can be used in conjunction with the design system extraction
+*  program which calculates/combines junction parasitic capacitance
+*  per node.
+*
+*                  o  nwell (nw)
+*                  |------------+
+*                  |            |
+*                ----          / \
+*                 /\   Dnwx   /   \ Gleak
+*                /  \         \   /  Diode includes junction capacitance
+*                ----          \ /   and forward bias current parameters.
+*                  |            |
+*                  |------------+
+*                  o  substrate (sx)
+*
+***********************************************************************
+*
+*  SYNTAX:     Specify both area and perimeter:
+*              xxx  nw sx  diodenwx (area=1p  perim=4u)
+*
+*
+*  NOTES:
+*
+*  1. Node order must be as specified.
+*
+*  2. Units for input parameters are meters**2 (area), meters (perim).
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2011 IBM Corporation
+*                                
+***********************************************************************
+simulator lang=spectre
+
+subckt diodenwx  (nw sx)
+parameters       area=1p  perim=4u  dtemp=0
+
+dnwa   sx  nw  dnwx  area=area  perim=perim  trise=dtemp
+gleak  nw  sx  bsource  i=5e-5*(sinh(0.5*v(nw,sx))*area) 
+
+* NW to SX Diode
+*
+model dnwx diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.15
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++     n = n_nw
++    ns = n_nw
++    is = js_nw
++   isw = jsw_nw
++    cj = cj_nw
++    vj = pb_nw
++     m = mj_nw
++  cjsw = cjsw_nw
++  vjsw = pbsw_nw
++  mjsw = mjsw_nw
++   cta = cta_nw
++   pta = pta_nw
++   ctp = ctp_nw
++   ptp = ptp_nw
++    bv = 10.0
++  jmax = 20e-6/(area*(1 + (jsw_nw*perim)/(js_nw*area))) 
++ jmelt = 1e15
+
+ends diodenwx

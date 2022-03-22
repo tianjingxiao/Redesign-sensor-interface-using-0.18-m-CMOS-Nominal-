@@ -1,0 +1,213 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/diffhavar.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.1 09/08/26 07:43:36
+*
+*>  IBM 7RF/7WL diffhavar   Differential Hyper-Abrupt Varactor
+*
+****************************************************************************
+*
+*  Syntax:  xxx (aa ab ca sx) diffhavar
+*            +     w = 0.8u  <- width  (m)
+*            +     l = 0.8u  <- length (m)
+*            +    nf = 2     <- total number of anodes (must be even and >2)
+*            + dtemp = 0     <- temp rise from ambient (deg C)
+*            +   rsx = 50    <- Substrate resistance
+*            +     m = 1     <- Device multiplicity
+*
+* Example Call #2:  Specify anode width, device capacitance, and # cathodes
+*  SYNTAX:  xxx ( aa ab ca sx) diffhavar
+*            +     w = 0.8u  <- Drawn anode width
+*            +     c = 0.87f <- Device capacitance (zero bias)
+*            +    nf = 2     <- total number of anodes
+*            + dtemp = 0     <- Device temp rise from ambient (deg C)
+*            +   rsx = 50    <- Substrate resistance
+*            +     m = 1     <- Device multiplicity
+*
+*
+* NOTES:
+*
+*     If c is specified in place of l, the anode length is calculated
+*     so as to produce a varactor with a zero-bias capacitance equal to c.
+*     If both l and c are specified, l takes precedence.
+*
+*
+*                        o (aa)            o (ab)
+*                        |                 |
+*                        |        caa      |
+*                        +--------||-------+
+*                        |                 |
+*                        |                 |
+*                        /                 /
+*                  rma1  \           rma2  \
+*                        /                 /
+*                        |                 |
+*                 +----(ao)        +-----(bo)
+*                 |      |          |      |
+*                 |      |          |      |
+*                 | xca1---         | xca2---
+*                 |     \ /         |     \ /
+*                 |    - - -        |    - - -
+*                 |      |          |      |
+*                 |      |          |      |
+*                 |    (ai)         |    (bi)
+*             cf1 =      |      cf2 =      |
+*                 |      |          |      |
+*                 |      /          |      /
+*                 | rci1 \          | rci2 \
+*                 |      /          |      /
+*                 |      |          |      |
+*                 |      |          |      |
+*                 +------+----------+----(co)--/\/\/\--o (ca)
+*                                          |     rco
+*                                          |
+*                                        - - -
+*                                         / \
+*                                     dcx - -
+*                                          |
+*                                          \
+*                                          /
+*                                     rsx  \
+*                                          /
+*                                          |
+*                                     (sx) o substrate
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*
+****************************************************************************
+simulator lang=spectre
+
+subckt diffhavar (aa ab ca sx)
+parameters       w=0.8u l=0u nf=2 c=0 rsx=50 dtemp=0
+*
+*---- Drawn Geometry ----------------------------------------------------------
++ pnf  = max(2*int(nf/2),2)
++ cknf = (pnf==2)
++ delcap = -0.31u
++ cfringe = 85p
++ rxlc = (2*c-2*nncphav*(w+ndelrx)*(pnf/2))/(nncahav*(pnf/2)*(w+ndelrx)+2*nncphav*(pnf/2)) - ndelrx
++ rxlq = l*(1-(l==0)) + rxlc*(l==0)
++ rxwd = w
++ rxld = rxlq
++ rx2rx = 0.36u
++ rnw = 0.48u
++ rn2rx = 0.90u
++ rn2ns = 0.52u
++ nsw = pnf*w + (pnf-1)*rx2rx + 2*(rn2rx+rnw+rn2ns)
++ nsl = rxlq + 2*(rn2rx+rnw+rn2ns)
+*
+*---- Drawn Geometry + Mask Bias ----------------------------------------------
+*  geometrical variable names are unchanged, but sheet resistance names are.
+*  delcap is used to calculate the effective area for the capacitance
++ capw = rxwd + delcap + tdelrx
++ capl = rxld + delcap + tdelrx
++ rxwx = rxwd + delrx
++ rxlx = rxld + delrx
++ rnwx = rnw + delrx
++ rn2rxx = rn2rx - delrx
++ nswx = nsw + delnsti
++ nslx = nsl + delnsti
+*
+*---- Area/Perimeter Calculations ---------------------------------------------
++ arearx = rxwx*rxlx*pnf/2
++ perimrx = 2*(rxwx+rxlx)*pnf/2
++ areans = nswx*nslx
++ perimns = 2*(nswx+nslx)
++ areacap = capw*capl*pnf/2
++ perimcap = 2*(capw+capl)*pnf/2
+*
+*---- M1 to M1 paracap -----------------------------------------------------
++ m1a = (rxld*min(rxwd,0.5u))*(pnf-1)
++ m1l = rxld*(pnf-1)
++ m1w = rxwd*(pnf-2)
++ rxmet = 0u*m1a + 30p*m1w + 60p*m1l
+*
+*---- NW resistance --------------------------------------------------------
+*  prundr is the resistance under the anodes
+*  prbtwn is the resistance between the anodes
++ prundr   = 0.4*nbnsr*rxwd/rxld
++ prbtwn   = 0.4*nbnsr*rx2rx/rxld
++ prend    = (prundr/2 + prbtwn)/2
++ prmid    = (prundr/3 + prbtwn)/max(1,(pnf-3))
++ prca     = ((1-cknf)*prend*prmid/(prend+prmid) + cknf*(2*prundr/3 + prbtwn))/2
+*  horizontal and vertical resistance to the cathode contacts
+*  rnwx is the width of the RX making contact
+*  rnswi/rnsli is the width/length of the NS region under the RX stripes
+*  rundr is the resistance of getting our from under the gates
+*  rtrap is the resistance of the trapizodal region to the contacts
+*  rucon is the resistance under the nw contacts
++ rnswi = nsw - 2*(rn2rx+rnw+rn2ns)
++ rnsli = nsl - 2*(rn2rx+rnw+rn2ns)
++ rundrw = (0.4*nbnsr/16)*rnsli/rnswi
++ rtrapw = (nbnsr/4)*log(1.0+2*rn2rx/rnswi)
++ ruconw = nbnsr*rnwx/(6*(rnswi+2*rn2rx))
++ rvertw = nrnw/(rnwx*(rnswi+2*rn2rx)*2)
++ rrx2cw = 6*(rnswi+2*rn2rx)/(rnwx*12*2)
++ rnwcnw = rundrw + + rtrapw + ruconw + rvertw + rrx2cw
++ rundrl = (0.4*nbnsr/16)*rnswi/rnsli
++ rtrapl = (nbnsr/4)*log(1.0+2*rn2rx/rnsli)
++ ruconl = nbnsr*rnwx/(6*(rnsli+2*rn2rx))
++ rvertl = nrnw/(rnwx*(rnsli+2*rn2rx)*2)
++ rnwcnl  = rundrl + rtrapl + ruconl + rvertl
++ prnwcon  = rnwcnw*rnwcnl/(rnwcnw+rnwcnl)
+*  resistance of the anode metal
++ ramet = m1rs*(rxld+rn2rx+rnw)/(3*(pnf/2)*(rxwd+delm1))
++ ravrt = (250p/arearx)*((1-cknf)*3*pnf/(3*pnf-1) + cknf)
+*
+*
+*  Subcircuit
+caa  aa  ab  capacitor c=rxmet
+rma1 aa  ao  resistor r=ramet+ravrt trise=dtemp tc1=tm1rs
+xca1 ao  ai  havarcap
++     pareac = areacap + pdiffedge*perimcap
++      ax_ha = 5.1e16*(1.0 + axvar)
++      ay_ha = 1.2e15*(1.0 + ayvar)
++      az_ha = 5.1e16*(1.0 + azvar)
++   lkpre_ha = 1.6e-3*arearx + 12e-9*perimrx
++ satcurr_ha = 71e-9*arearx + 32e-15*perimrx
++    deltemp = temp+dtemp-25
+rci1 ai  co  resistor r=prca trise=dtemp tc1=tnwrs
+cf1  ao  co  capacitor c=cfringe*perimcap
+rma2 ab  bo  resistor r=ramet+ravrt trise=dtemp tc1=tm1rs
+xca2 bo  bi  havarcap
++     pareac = areacap + pdiffedge*perimcap
++      ax_ha = 5.1e16*(1.0 + axvar)
++      ay_ha = 1.2e15*(1.0 + ayvar)
++      az_ha = 5.1e16*(1.0 + azvar)
++   lkpre_ha = 1.6e-3*arearx + 12e-9*perimrx
++ satcurr_ha = 71e-9*arearx + 32e-15*perimrx
++    deltemp = temp+dtemp-25
+rci2 bi  co  resistor r=prca trise=dtemp tc1=tnwrs
+cf2  bo  co  capacitor c=cfringe*perimcap
+rco  co  ca  resistor r=prnwcon trise=dtemp tc1=tnwrs
+dsx  si  co  rnsxd area=areans perim=perimns trise=dtemp
+rsxx sx  si  resistor r=rsx
+*
+
+model rnsxd diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++     n = n_rns
++    ns = n_rns
++    is = js_rns
++   isw = jsw_rns
++    cj = ncjsa
++   cta = cta_rns
++    vj = pb_rns
++   pta = pta_rns
++     m = mj_rns
++  cjsw = ncjsp
++   ctp = ctp_rns
++  vjsw = pbsw_rns
++   ptp = ptp_rns
++  mjsw = mjsw_rns
++  imax = 1e15
++    bv = bv_rns
+
+ends diffhavar

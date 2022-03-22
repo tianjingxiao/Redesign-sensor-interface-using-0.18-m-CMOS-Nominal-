@@ -1,0 +1,209 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/diffmosvar.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.2 09/11/04 09:21:57
+*
+*>  IBM 7RF/7WL  diffmosvar   nMOS Varactor
+*
+*******************************************************************************
+*
+*  Syntax:  xxx (ga gb nw sx) diffmosvar
+*            +     l = 2u    <- length (m)
+*            +     w = 2u    <- width  (m)
+*            +    nf = 1     <- total number of gates
+*            + dtemp = 0     <- temp rise from ambient (deg C)
+*            +   rsx = 50    <- Substrate resistance
+*
+*                            .--------------------.
+*                            |                    |
+*                            |<-------- l-------->|
+*                            |                    |
+*                       .----|--------------------|-----.
+*                       |    |          ^         |     | RX
+*                       |  s |          |         |  d  |
+*                       |    |          w         |     |
+*                       |    |          |         |     |
+*                       |    |          v         |     |
+*                        ----|--------------------|-----
+*                            |                    |
+*                            |          PC        |
+*                            |                    |
+*                             --------------------
+*
+* 
+*
+* NOTES:
+*
+*
+*                        o (ga)            o (gb)
+*                        |                 |
+*                        |        cgg      |
+*                        +--------||-------+
+*                        |                 |
+*                        |                 |
+*                        /                 /
+*                   rg1  \            rg2  \
+*                        /                 /
+*                        |                 |
+*                 +-----(a)         +-----(b)
+*                 |      |          |      |
+*                 |      |          |      |
+*                 | xca1 =          | xca2 =
+*                 |      |          |      |
+*                 |      |          |      |
+*                 |    (aa)         |    (bb)
+*             cf1 =      |      cf2 =      |
+*                 |      |          |      |
+*                 |      /          |      /
+*                 |  rn1 \          |  rn2 \
+*                 |      /          |      /
+*                 |      |          |      |
+*                 |      |          |      |
+*                 +------+----------+-----(c)--/\/\/\--o (nw)
+*                                          |                   
+*                                          |
+*                                        - - -
+*                                         / \
+*                                     dcx - -
+*                                          |
+*                                          |
+*                                     (sx) o substrate
+*
+*
+*  These models were developed using the Spectre (TM) circuit simulator.
+*
+* IBM CONFIDENTIAL
+* (C) 2009 IBM Corporation
+*
+********************************************************************************
+simulator lang=spectre
+
+subckt diffmosvar (ga gb nw sx)
+parameters    l=2u w=2u nf=2 dtemp=0 rsx=50 
+*
+*---- Drawn Geometry ----------------------------------------------
++ pl = max(l,0.18u)
++ pw = max(w,0.4u)
+*
+*---- Drawn Geometry + Mask Bias ----------------------------------
++ plf  = pl + lwbpc
++ pwf  = pw + delrx
+*
+*---- Area/Perimeter Calculations ---------------------------------
+*  Device values
++ pnf  = max(2*int(nf/2),2)
++ cknf = (pnf==2)
++ pareac   = plf * pwf * pnf
+*  Nwell values
++ lnw      = (2*1.40u) + ((pnf-1)*0.24u) + (pnf*max(pl,0.32u))
++ wnw      = (2*1.44u) + pw
++ areanw   = lnw * wnw
++ perimnw  = 2 * (lnw + wnw)
+*---- RX and PC Fringe cap ----------------------------------------
++ prxfrng = 0.44n
++ pcapof  = 0.136n
++ pcof    = 2*pnf*(pwf*pcapof + plf*prxfrng)
+*---- M1 to M1 paracap --------------------------------------------
++ m1a = ((pw+0.84u)*min(pl,0.5u))*(pnf-1)
++ m1w = (pw+0.84u)*(pnf-1)
++ m1l = pl*(pnf-2)
++ pcmet = 66u*m1a + 87p*m1w + 130p*m1l
+*
+*---- NW resistance -----------------------------------------------
+*  prundr is the resistance under the gates
+*  prbtwn is the resistance between the gates
+*  the nwrs is multiplied by 0.9 since the nw is covered by RX and not STI
++ prundr   = 0.9*nwrs*plf/pwf
++ prbtwn   = 0.9*nwrs*(0.24u+max(0,0.32u-plf))/pwf
++ prend    = (prundr/2 + prbtwn)/2
++ prmid    = (prundr/3 + prbtwn)/max(1,(pnf-3))
++ prnw     = (1-cknf)*prend*prmid/(prend+prmid) + cknf*(2*prundr/3 + prbtwn)
+*  this next bit is the resistance to the nw contacts: horizontal and vertical terms
+*  rnwx is the width of the RX making contact
+*  rnwwi/rnwli is the width/length of the NW region
+*  rundr is the resistance of getting our from under the gates
+*  rtrap is the resistance of the trapizodal region to the contacts
+*  rucon is the resistance under the nw contacts
++ rnwx = 0.4u
++ rnwwi = wnw - 2*1.40u
++ rnwli = lnw - 2*1.40u
++ rundrw = 0.9*(nwrs/16)*rnwli/rnwwi
++ ruconw = 0.9*nwrs*(0.48u/(6*pwf)+rnwx/(6*(rnwwi+0.96u+2*rnwx)))
++ rvertw = 125p/((0.48*pwf + rnwx*(rnwwi+0.98u+2*rnwx))*2)
++ rnwcnw  = rundrw + ruconw + rvertw
++ rundrl = 0.9*(nwrs/16)*rnwwi/rnwli
++ rtrapl = 0.9*(nwrs/4)*log(1.0+0.96u/rnwli)
++ ruconl = 0.9*nwrs*rnwx/(6*(rnwli+0.96u))
++ rvertl = 125p/(rnwx*(rnwli+0.96u)*2) + 6*(rnwli+0.96u)/(rnwx*12*2)
++ rnwcnl  = rundrl + rtrapl + ruconl + rvertl
++ prnwcon  = rnwcnw*rnwcnl/(rnwcnw+rnwcnl)
+*
+*---- Gate resistance ------------------------------------------------------
+*  this consists of three parts: contacts, length of gate,
+*  and a vertical resistance down through the gate and into underlying NW
++ pnca     = max(1,int((pl+0.12u)/0.44u))
++ prgate   = 10.0/(2*pnca) + pcrsi*pwf/(12*plf) + (exp(oppcrenf)-97)*0.62p/(pwf*plf)
+*
+
+*  Subcircuit
+rg1  ga   a  resistor r=max(2*prgate/pnf,0) trise=dtemp tc1=tpcrsi
+xca1  a  aa  mosvarcap
++   pl_va = plf
++   pw_va = pwf
++  pnf_va = pnf/2
++   co_va = co_mv
++   qs_va = qs_mv
++   qp_va = qp_mv
++  pon_va = 8m
++  vbi_va = 0.035
++  cot_va = 0.1m
++  pont_va = 5m
++  vbit_va = 300u
++  deltemp = temp+dtemp-25
+cf1   a   c  capacitor c=pcof/2
+rn1  aa   c  resistor r=prnw/2 trise=dtemp tc1=tnwrs
+rg2  gb   b  resistor r=max(2*prgate/pnf,0)  trise=dtemp tc1=tpcrsi
+xca2  b  bb  mosvarcap
++   pl_va = plf
++   pw_va = pwf
++  pnf_va = pnf/2
++   co_va = co_mv
++   qs_va = qs_mv
++   qp_va = qp_mv
++  pon_va = 8m
++  vbi_va = 0.035
++  cot_va = 0.1m
++  pont_va = 5m
++  vbit_va = 300u
++  deltemp = temp+dtemp-25
+cf2   b   c  capacitor c=pcof/2
+rn2  bb   c  resistor r=prnw/2 trise=dtemp tc1=tnwrs
+cgg  ga  gb  capacitor c=pcmet
+rnw  nw   c  resistor r=prnwcon trise=dtemp tc1=tnwrs
+dsx  sx   c  nwsxd  area=areanw perim=perimnw trise=dtemp
+*
+*
+*---- NWell-to-Sub Diode ---------------------------------------
+model nwsxd diode
++ level = 1
++  tlev = 2
++ tlevc = 1
++  tnom = 25
++    eg = 1.12
++   xti = 3.0
++  gap1 = 473u
++  gap2 = 636
++     n = 1.023
++    ns = 1.023
++    is = 1.037u
++   isw = 2.873p
++    rs = rsx*areanw
++   cjo = 0.18m
++    vj = 4.0
++     m = 1.2
++  cjsw = 0.4n
++  vjsw = 0.1
++  mjsw = 1.2
++  imax = 1e15 
++    bv = 15
+* 
+
+ends diffmosvar

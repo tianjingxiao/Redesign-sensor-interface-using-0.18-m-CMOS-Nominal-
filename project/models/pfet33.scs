@@ -1,0 +1,225 @@
+* Path, Component, Release: cmos7base/rel/Spectre/models/pfet33.scs, tech7_models, mod_cmos7base
+* CMVC Revision: 1.3 12/09/26 07:49:56
+*
+*>  IBM 7RF/7WL  pfet33   2.5V and 3.3V PFET subcircuit
+*
+***************************************************************************
+*
+*  SYNTAX:  xxx ( d g s b ) pfet33 l=nnn w=nnn
+*
+*  REQUIRED:
+*            +        w = nnn  <- Design width of RX (meters)
+*            +        l = nnn  <- Design length of PC (meters)
+*  OPTIONAL:
+*            +       as = 0    <- Source diffusion area (meters^2)
+*            +       ad = 0    <- Drain diffusion area (meters^2)
+*            +       ps = 0    <- Source diffusion perimeter in (meters)
+*            +       pd = 0    <- Drain diffusion perimeter in (meters)
+*            +      nrd = 0    <- Number of squares of drain diffusion
+*            +      nrs = 0    <- Number of squares of source diffusion
+*            +    dtemp = 0    <- Device temp rise from ambient (deg C)
+*            +       nf = 1    <- number of gate stripes or "fingers" in device
+*            +  m (par) = 1    <- number of parallel instances (multiplicity)
+*            +     gcon = 1    <- Gate connection switch (1->single-ended,
+*                                                         2->double-ended)
+*            +      rsx = 50   <- body resistance
+*            +       rf = 0    <- RF device flag (0-> pfet33 pcell
+*                                                 1-> pfet33_rf pcell)
+*            +      gns = 0    <- ESD hierarchical cell layout option
+*                                 (0-> silicided gate, 1-> non-silicided gate)
+*
+*  NOTES:
+*
+*  1. If nrd or nrs are not passed to the model they will default to 0.
+*     This will result in 0 ohms of silicided S/D resistance being placed
+*     in series with the device model.
+*
+*  2. Intrinsic FET model includes PC bounded perimeter only.
+*
+* SUBCIRCUIT SCHEMATIC:
+*
+*                cwgd             drain
+*         ________| |_______________O___________________________________
+*        |        | |               |                                  |
+*        |                          |                                  |
+*        |                          /     Ddb (Includes internal       |
+*        |                   rdext  \     FET drain area and STI       |
+*        |                          /     bounded perimeter)           |
+*        |                      d1  |______|\|__________             -----  cwds
+*        |                          |      |/|          |            -----
+*        |                          |                   |              |
+*        |                          |                   |              |
+*        |                      ____|                   |              |
+*   gate |             g1   | |      |  b1              |     bulk     |
+*        O-------\/\/\/-----| |      |-------\/\/\/----o-------O       |
+*        |         rgate    | |____  |         rsb      |              |
+*        |                          |                   |              |
+*        |                          |                   |              |
+*        |                          |                   |              |
+*        |                      s1  |______|\|__________|              |
+*        |                          |      |/|                         |
+*        |                          \                                  |
+*        |                   rsext  /     Dsb (Includes internal       |
+*        |                          \     FET source area and STI      |
+*        |                          |     bounded perimeter)           |
+*        |________| |_______________|__________________________________|
+*                 | |               O
+*                cwgs             source
+*
+*
+* IBM CONFIDENTIAL
+* (C) 2012 IBM Corporation
+*
+***************************************************************************
+simulator lang=spectre
+inline subckt pfet33 (d g s b)
+parameters
++   w=0 l=0 as=0 ad=0 ps=0 pd=0 nrd=0 nrs=0 dtemp=0 nf=1
++      rsx=50 gcon=1 rf=0 par=1 gns=0
++   zad=ad zas=as znrd=nrd znrs=nrs zpd=pd zps=ps
+*
+* Gate bounded perimeter (identical for source and drain)
++  pgate = (w+ndelrx)
+*
+* STI S/D bounded perimeter (subtract gate bounded from total passed in)
++  pstis = max(0,(zps-pgate))
++  pstid = max(0,(zpd-pgate))
+*
+* Mis-match calculations: function of w, l, nf and multiplicity (par)
++  kvt = 0.9912e-8  kvtw =-0.008u   kvtl = 0.172u
++  kmb = 2.5075e-6  kmbw =-0.068u   kmbl = -0.084u
++  sigvth  = kvt/sqrt((w-kvtw)*nf*par*(l-kvtl))
++  sigbeta = kmb/sqrt((w-kmbw)*nf*par*(l-kmbl))
++  mmvth0  = (sigvth * mvth0)         // vth0 mis-match
++  mmbeta  = (sigbeta * mbeta)        // beta mis-match
+*
+* Flicker noise: statistics function of w, l, nf and multiplicity (par)
++  noi_scale = (noistdp-min(log(sqrt(w*l*nf*par/noidevap)),0))
++  noi_mul   = (exp(dnoip33*noi_scale))
+*
+* Gate resistance calculation for all cases (function of w, l and nf)
++  rge1=((pcrsi*(1-gns)+oppcrsf*gns)/(nf*gcon))*((0.4u+w/(3*gcon))/(l+lwbpc))
++  rgw1=(4.299e-4/((w-2*wint_p33)*nf)+0.8581)
++  rgl1=((9.142e+6*(l-2*lint_p33)-0.4380)/3.53)
+*
+* Substrate resistance calculation for rf=1 case (function of w, l and nf)
++  rsw1=(18.93*log10(1/((w-2*wint_p33)*nf))-51.07)
++  rsl1=((7e-06/(l-2*lint_p33) + 0.0236)/20.7)
+*
+* Short Channel Switch (2.5V devices)
++  sch=(l<0.4u)
+*
+* Node voltage warning checks
++  pvlim  = 3.6*(1-sch) + 2.75*sch
++  pblim  = 6.0*(1-sch) + 4.6*sch
+*
+if (gbv==2) {
+ vds_check  assert dev=pfet33 param=vds       min=-pvlim max=0 message="Vds exceeds limit" level=warning
+ vgs_check  assert dev=pfet33 param=vgs       min=-pvlim max=pvlim message="Vgs exceeds limit" level=warning
+ vgd_check  assert dev=pfet33 expr=(vgs-vds)  min=-pvlim max=pvlim message="Vgd exceeds limit" level=warning
+ vgb_check  assert dev=pfet33 expr=(vgs-vbs)  min=-pblim max=pblim message="Vgb exceeds limit" level=warning
+ vbs_check  assert dev=pfet33 param=vbs       max=pblim message="Vbs exceeds limit" level=warning
+ vbs_chkfwd assert dev=pfet33 param=vbs       min=-fwdlim message="Vbs source-body diode is being forward-biased" level=warning
+ vbd_check  assert dev=pfet33 expr=(vbs-vds)  max=pblim message="Vbd exceeds limit" level=warning
+ vbd_chkfwd assert dev=pfet33 expr=(vbs-vds)  min=-fwdlim message="Vbd drain-body diode is being forward-biased" level=warning
+}
+*
+pfet33 (d1 g1 s1 b1) pch33   w=w l=l as=1e-15 ad=1e-15 ps=pgate pd=pgate
++                            nrd=0 nrs=0 m=nf trise=dtemp
+rdext  d1  d resistor r=(znrd*rsh_p33/nf)
+rsext  s1  s resistor r=(znrs*rsh_p33/nf)
+rgate  g1  g resistor r=(rge1+rgw1*rgl1)
+rsb     b b1 resistor r=((1-rf)*rsx + rf*rsl1*rsw1)
+cwgd    g d  capacitor c=(1e-18+rf*(5.7776e-11*w*nf+(0.1744*l*(nf-1)+0.1337*l*nf+0.0749*(nf-1))*1e-11*w*nf))
+cwgs    g s  capacitor c=(1e-18+rf*(5.7776e-11*w*nf+(0.1744*l*(nf-1)+0.1337*l*nf+0.0749*(nf-1))*1e-11*w*nf))
+cwds    d s  capacitor c=(1e-18+rf*(1.1e-17*w*nf/(l+3.2e-7)  + 5.5e-18*w*nf/(l+4e-7) + 1.6e-11*(l+6e-7)*(nf-1) + 2.8e-11*w*(int(nf/2) + int((nf-1)/2))))
+ddb    d1  b pdio33 area=zad pj=pstid m=nf trise=dtemp
+dsb    s1  b pdio33 area=zas pj=pstis m=nf trise=dtemp
+***************************************************************************
+* PFET33 BSIM3v3.2.4 Model
+***************************************************************************
+model pch33 bsim3v3                                type    = p
++version = 3.24           tnom    = 25             tox     = tox_p33
++xj      = 2e-7           nch     = 3e17           ldsub   = 0.16
++vth0    =(vth0_p33+mmvth0) k1      = 1.00925      k2      = -3.34116e-3
++k3      = -1.41819       k3b     = 0.947446       w0      = -3.7732e-7
++nlx     = 1e-15          dvt0w   = -0.0153864     dvt1w   = 0
++dvt2w   = -0.116536      lrdsw   = -7.17874       lags    = 7.8457e-3
++dvt2    = -0.142965      wk3b    = -0.281502      u0      =(u0_p33+mmbeta)
++ua      = 8.70732e-10    ub      = 1.31952e-18    uc      = -7.07098e-11
++vsat    = 1.19276e5      a0      = 0.955723       ags     = 0.143298
++b0      = 1.09369e-7     b1      = 1e-5           keta    = 0.011287
++a1      = 0.1            a2      = 1              rdsw    = rdsw_p33
++prwg    = -0.01          prwb    = 0.0252946      wr      = 1
++wint    = wint_p33       lint    = lint_p33       lvsat   = -4.85547
++dwg     = -9.03314e-9    dwb     = -1.30353e-8    voff    = -0.160398
++nfactor = 1.10086        cit     = 0              cdsc    = 0
++cdscd   = 2.94472e-4     cdscb   = 0              eta0    = 0.2
++etab    = 0.3            dsub    = 1.13959        pclm    = 0.967115
++pdiblc1 = 0.147877       pdiblc2 = 8.36236e-4     pdiblcb = -1.5
++drout   = 0.747348       pscbe1  = 2.78936e8      pscbe2  = 6.05822e-7
++pvag    = -0.0670921     delta   = 5.387e-3       ngate   = 8e19
++alpha0  = 1.224e-6       alpha1  = 4.56           beta0   = 30
++mobmod  = 1              wl      = -1.5e-15       wu0     = -16.8115
++wuc     = -2.2828e-11    lketa   = -0.025         wketa   = -0.011
++wln     = 0              ww      = -3.35373e-19   wwn     = 0
++wwl     = 0              ll      = 0              lln     = 0
++lw      = 0              lwn     = 0              lwl     = 0
++lua     = -3.15552e-12   lub     = -4.92927e-20   luc     = 3.43956e-11
++pags    = 0              paramchk= 0              binunit = 1
++dvt0    = (4.52*sch+5.04*(1-sch))
++dvt1    = (0.917*sch+0.930*(1-sch))
++lu0     = (0.45*sch-0.11*(1-sch))
+*
+***************************************************************************
+* Source/Drain Diode Parameters
+***************************************************************************
++tlev    = 0              tlevc   = 1
++eg      = 1.17           gap1    = 4.73E-4        gap2    = 636
++cj      = cj_p33         pb      = pb_p33         mj      = mj_p33
++cjsw    = cjsg_p33       pbsw    = pbsg_p33       mjsw    = mjsg_p33
++cjswg   = cjsg_p33       pbswg   = pbsg_p33       mjswg   = mjsg_p33
++xti     = 3              n       = n_p33          js      = js_p33
++jsw     = jsw_p33        hdif    = 0              rsh     = 0
++tcjswg  = tcjsg_p        tpbswg  = tpbsg_p
+*
+***************************************************************************
+* Capacitance-Voltage (CV) Parameters
+***************************************************************************
++capmod = 2               xpart   = 0             acde    = 1.2
++cgso   = cgso_p33        cgdo    = cgdo_p33      cgbo    = 4.062e-11
++cgsl   = cgsl_p33        cgdl    = cgdl_p33      ckappa  = 4.2828
++cf     = 0               dlc = (lint_p33+0.021u) dwc     = wint_p33
++llc    = 0               lwc     = 0             lwlc    = 0
++wlc    = 0               wwc     = 0             wwlc    = 0
+*
+***************************************************************************
+* Jds/Vt Temperature Parameters
+***************************************************************************
++prt     = 0              ute     = -0.24          kt1     = -0.370459
++kt1l    = 1.558672e-8    kt2     = -0.0321446     ua1     = 6.143963e-9
++ub1     = -7.61e-18      uc1     = -1.76593e-10   at      = 1e3
++luc1    = 6.2e-11        lute    = -0.028         wute    = 0.024
+*
+***************************************************************************
+* Flicker Noise Parameters
+***************************************************************************
++noimod = 2                  noia = (9.9e18*noi_mul)  noib = (9.52e5*noi_mul)
++noic   = (3.47e-12*noi_mul)   em = 2.64e7              af = 1
++ef     = 1.31                 kf = 0
+*
+***************************************************************************
+* Extrinsic Source/Drain Diode Model
+***************************************************************************
+model pdio33  diode       level   = 1              tnom    = 25
++xti     = 3              tlev    = 0              tlevc   = 1
++eg      = 1.17           gap1    = 4.73E-4        gap2    = 636
++is      = js_p33         isw     = jsw_p33        n       = n_p33
++cj      = cj_p33         vj      = pb_p33         m       = mj_p33
++cjsw    = cjsw_p33       vjsw    = pbsw_p33       mjsw    = mjsw_p33
++imax    = 1e10           imelt   =1e12            rs      =120p
++cta     = cta_p          ctp     = ctp_p          pta     = pta_p
++ptp     = ptp_p
+*
+***************************************************************************
+ends pfet33

@@ -1,0 +1,440 @@
+* Path, Component, Release: cmrf7sf/rel/Spectre/models/pfet50.scs, rf7sf_models, mod_cmrf7sf
+* CMVC Revision: 1.10 12/10/24 07:02:04
+*
+*  IBM CMRF7SF  pfet50       5.0V PFET subcircuit
+***************************************************************************
+*
+*  SYNTAX:  xxx ( d g s b ) pfet50 l=nnn w=nnn
+*
+*  REQUIRED:
+*            +        w = nnn  <- Design width of RX (meters)
+*            +        l = nnn  <- Design length of PC (meters)
+*  OPTIONAL:
+*            +       as = 0    <- Source diffusion area (meters^2)
+*            +       ad = 0    <- Drain diffusion area (meters^2)
+*            +       ps = 0    <- Source diffusion perimeter in (meters)
+*            +       pd = 0    <- Drain diffusion perimeter in (meters)
+*            +      nrd = 0    <- Number of squares of drain diffusion
+*            +      nrs = 0    <- Number of squares of source diffusion
+*            +    dtemp = 0    <- Device temp rise from ambient (deg C)
+*            +       nf = 1    <- number of gate stripes or "fingers" in device
+*            +  m (par) = 1    <- number of parallel instances (multiplicity)
+*            +     gcon = 1    <- Gate connection switch (1->single-ended,
+*                                                         2->double-ended)
+*            +      rsx = 50   <- Body resistance
+*            +       rf = 0    <- RF device flag (0-> pfet pcell
+*                                                 1-> pfet_rf pcell)
+*            +      gns = 0    <- ESD hierarchical cell layout option
+*                                 (0-> silicided gate, 1-> non-silicided gate)
+*
+* NOTES:
+*
+*  1. If nrd or nrs are not passed to the model they will default to 0.
+*     This will result in 0 ohms of silicided S/D resistance being placed
+*     in series with the device model.
+*
+*  2. Intrinsic FET model includes PC bounded perimeter only.
+*
+* SUBCIRCUIT SCHEMATIC:
+*
+*                cwgd
+*                 | |             drain
+*        o--------| |---------------o----------------------------------o
+*        |        | |               |                                  |
+*        |                          |     Ddb (Includes internal       |
+*        |                          /     FET drain area and STI       |
+*        |                   rdext  \     bounded perimeter)           |
+*        |                          /                                  |
+*        |                          |______|\|__________             ----- cwds
+*        |                      d1  |      |/|          |            -----
+*        |                          |------\/\/\/-------o              |
+*        |                          |        rddb       |              |
+*        |                    |_____|                   |              |
+*        |              g1  | |         b1              |     bulk     |
+*   gate o-----\/\/\/---o---| |  |------o----\/\/\/-----o-------o      |
+*        |      rgate       | |_____          rsx       |              |
+*        |                    |     |                   |              |
+*        |                          |------\/\/\/-------o              |
+*        |                          |         rdsb      |              |
+*        |                      s1  |______|\|__________|              |
+*        |                          |      |/|                         |
+*        |                          \                                  |
+*        |                   rsext  /     Dsb (Includes internal       |
+*        |                          \     FET source area and STI      |
+*        |                          |     bounded perimeter)           |
+*        |        | |               |                                  |
+*        o--------| |---------------o----------------------------------o
+*                 | |             source
+*                cwgs
+*
+* IBM CONFIDENTIAL
+* (C) 2012 IBM Corporation
+*
+***************************************************************************
+simulator lang=spectre
+*
+inline subckt pfet50 (d g s b)
+parameters
++  w=0 l=0 nf=1 par = 1 as=0 ad=0 ps=0 pd=0 nrd=0 nrs=0 
++  gcon=1 rsx=50 dtemp=0 rf=0 gns=0
+*
++  zad=ad zas=as znrd=nrd znrs=nrs zpd=pd zps=ps
+* 
+* Gate bounded perimeter (identical for source and drain)
++  pgate = (w+ndelrx)
+*
+* STI S/D bounded perimeter (subtract gate bounded from total passed in)
++  pstis = max(0,(zps-pgate))
++  pstid = max(0,(zpd-pgate))
+*
+* Mis-match calculations: function of w, l, nf and multiplicity (par)
++  kvt=1.3e-8    kvtw=-0.05u   kvtl=0.38u
++  kmb=3.20e-10  kmbw=-1.00u   kmbl= 0.25u
++  sigvth=kvt/sqrt((w-kvtw)*nf*par*(l-kvtl))
++  sigbeta=kmb/sqrt((w-kmbw)*nf*par*(l-kmbl)) 
++  mmvth0=(sigvth*mvth0)         // vth0 mis-match
++  mmbeta=(sigbeta*mbeta)        // beta mis-match
+*
+* Flicker noise: statistics function of w, l, nf and multiplicity (par)
++  noi_scale = (noistd_p50-min(log(sqrt(w*l*nf*par/noideva_p50)),0))
++  noia_mul  = (exp(dnoip50*noi_scale))
++  noib_mul  = (exp(dnoip50*noi_scale))
++  noic_mul  = (exp(dnoip50*noi_scale/2.25))
+*
+* Gate resistance calculation (function of w, l and nf)
++  rnqsl = (9)*((l-2*lint_p50)*1e+6)
++  rnqsw = (0.03898*((w-2*wint_p50)*1e6)**1.35)*(nf/32)**0.825
++  rpoly = ((pcrsi*(1-gns)+oppcrsf*gns)/nf)*((1.96u+w+ndelrx)/(l+lwbpc))*(1/(3*gcon*gcon))
++  rnqs  = (1.520)*(rnqsl/(rnqsw*3.51))
++  rwire = 0.020*(nf)
+*
+* Drain resistance calculation (function of l and nf)
++  rd = 1 + (nf-2)*(0.010)
+*
+* Source resistance calculation (function of l and nf)
++  rs = 1 + (nf)*(0.010)
+*
+* Body resistance calculation (function of l and nf)
++  rsbl = 1/((l-2*lint_p50)*1e6)
++  rsbn = 1/(0.008*nf)
++  rsbw = 1/((w-2*wint_p50)*1e6)
++  rsbt = (100)*rsbl*rsbn*rsbw*0.256*2.5641
+*
+* Gate to drain capacitance calculation (function of l and nf)
++  cgd = 1e-15 + (nf-2)*(400e-18)
+*
+* Gate to source capacitance calculation (function of l and nf)
++  cgs = 1e-15 + (nf)*(400e-18)
+*
+* Drain to source capacitance calculation (function of l and nf)
++  cds = (nf-2)*(500e-18 + l*700e-12 + w*100e-12)
+*
+* Gate to body capacitance calculation (function of w, l and nf)
++  cgb = gcon*(nf*(200e-18))
+*
+* Node voltage warning checks
++  pvlim = 5.5
++  pblim = 8.6
+*
+if (gbv==2) {
+ vds_check  assert dev=pfet50 expr=(-1*vds)        min=-pvlim max=0 message="Vds exceeds limit" level=warning
+ vgs_check  assert dev=pfet50 expr=(-1*vgs)        min=-pvlim max=pvlim message="Vgs exceeds limit" level=warning
+ vgd_check  assert dev=pfet50 expr=(-1*(vgs-vds))  min=-pvlim max=pvlim message="Vgd exceeds limit" level=warning
+ vgb_check  assert dev=pfet50 expr=(-1*(vgs+vsb))  min=-pblim max=pblim message="Vgb exceeds limit" level=warning
+ vsb_check  assert dev=pfet50 expr=(-1*vsb)        min=-pblim message="Vsb exceeds limit" level=warning
+ vsb_chkfwd assert dev=pfet50 expr=(-1*vsb)        max=fwdlim message="Vsb source-body diode is being forward-biased" level=warning
+ vdb_check  assert dev=pfet50 expr=(-1*(vsb+vds))  min=-pblim message="Vdb exceeds limit" level=warning
+ vdb_chkfwd assert dev=pfet50 expr=(-1*(vsb+vds))  max=fwdlim message="Vdb drain-body diode is being forward-biased" level=warning
+}
+*
+pfet50 d1 g1 s1 b1 pch50    w=w l=l as=1e-15 ad=1e-15 ps=pgate pd=pgate
++                           mult=nf 
+rdext  d1  d resistor r=(znrd*rsh_p50/nf) + rf*rd
+rsext  s1  s resistor r=(znrs*rsh_p50/nf) + rf*rs
+rgate  g1  g resistor r=(rpoly + rnqs + rf*rwire)
+rsb    b  b1 resistor r=((1-rf)*rsx + rf*rsbt)
+cwgd   g   d capacitor c=(1e-18 + rf*cgd)
+cwgs   g   s capacitor c=(1e-18 + rf*cgs)
+cwgb   g   b capacitor c=(1e-18 + rf*cgb)
+cwds   d   s capacitor c=(1e-18 + rf*cds)
+ddb    d1 b1 pdio50 area=zad pj=pstid m=nf trise=dtemp
+rddb   d1 b1 resistor r = 100e+3/(nf*zad)
+dsb    s1 b1 pdio50 area=zas pj=pstis m=nf trise=dtemp
+rdsb   s1 b1 resistor r = 100e+3/(nf*zas)
+*
+***************************************************************************
+* PFET PSP model
+***************************************************************************
+model pch50 psp1020     
++ level  = 1023
++ type = p
++ tr = 25.00
+***************************************************************************
+* Switch Settings
+***************************************************************************
++ swgidl  = 0.000 
++ swigate  = 0.000 
++ swimpact  = 1.000 
++ swjuncap  = 3.000 
+***************************************************************************
+* Parameters With Process Variation
+***************************************************************************
++ lap  = lint_p50
++ lov  = lov_p50
++ novo  =  3.900e+23
++ nsubo  =  1.290e+23 
++ rsw1  = rsw_p50 
++ thesatl  = thesatl_p50
++ toxo  = tox_p50
++ toxovo  = tox_p50
++ uo  = (uo_p50+mmbeta)
++ vfbl  = vfbl_p50
++ vfblw  = vfblw_p50
++ vfbo  = (vfb_p50+mmvth0)
++ wot  = wint_p50
+***************************************************************************
+* Core Parameters
+***************************************************************************
++ a1l  = 110.0e-3
++ a1o = 6.000 
++ a1w  = 50.00e-3  
++ a2o = 46.00 
++ a3l  = -80.00e-3  
++ a3o = 1.400 
++ a3w  =  50.00e-3  
++ a4l  = -500.0e-3  
++ a4o  =  75.00e-3  
++ a4w  =  50.00e-3  
++ agidlw = 0.000 
++ alp1l1  =  6.000e-3  
++ alp1l2  =  1.000e-3  
++ alp1lexp = 1.300 
++ alp1w  = -50.00e-3  
++ alp2l1  =  1.000e-3  
++ alp2l2  =  19.91e-3  
++ alp2lexp = 4.858 
++ alp2w = 0.000 
++ alpl  =  20.00e-3  
++ alplexp  =  900.0e-3  
++ alpw = 0.000 
++ axl  =  946.4e-3  
++ axo = 12.00 
++ betw1  = -34.88e-3  
++ betw2  = -8.500e-3  
++ bgidlo = 41.00 
++ cfbo = 1.000 
++ cfl  =  38.00e-6  
++ cflexp = 5.000 
++ cfrw  =  1.000e-18  
++ cfw  = -100.0e-3  
++ cgbovl = 0.000 
++ cgidlo = 0.000 
++ chibo = 3.100 
++ csl  = -614.2e-6  
++ cslexp = 5.000 
++ cslw = 0.000 
++ cso  =  87.90e-3  
++ csw  =  200.0e-3  
++ ctl  = 19.0e-3  
++ ctlexp = 1.000 
++ ctlw = 0.000 
++ cto  =  102.4e-3  
++ ctw  = -10.00e-3  
++ dlq  = -130.0e-9  
++ dnsubo = 0.000 
++ dphibl  =  6.500e-3  
++ dphiblexp = 2.000 
++ dphiblw = 0.000 
++ dphibo  =  13.68e-3  
++ dphibw  =  10.00e-3  
++ dta = dtemp
++ dwq = 0.000 
++ fbet1  =  150.0e-3  
++ fbet1w = 0.000 
++ fbet2  =  61.97e-3  
++ fetao = 1.457 
++ fol1  = fol1_p50  
++ fol2  = fol2_p50  
++ gc2o  =  375.0e-3  
++ gc3o  =  63.00e-3  
++ gcoo = 0.000 
++ iginvlw = 0.000 
++ igovw = 0.000 
++ kuo = 0.000 
++ kvsat = 0.000 
++ kvtho = 0.000 
++ lkuo = 0.000 
++ lkvtho = 0.000 
++ llodkuo = 0.000 
++ llodvth = 0.000 
++ lodetao = 1.000 
++ lp1  =  243.5e-9  
++ lp1w = 0.000 
++ lp2  =  200.0e-9  
++ lpck  =  1.000e-9  
++ lpckw = 0.000 
++ lvarl = 0
++ lvaro = 0
++ lvarw = 0
++ mueo = 1.923 
++ muew  = -180.0e-3  
++ npck  =  1.000e+23   
++ npckw = 0.000 
++ npl = 0.000 
++ npo  =  9.105e+25  
++ nslpo = 0.05 
++ nsubw  = -32.00e-3  
++ pkuo = 0.000 
++ pkvtho = 0.000 
++ qmc  =  400.0e-3  
++ rsbo  =  40.00e-3  
++ rsgo = 0.000 
++ rsw2 = 0.000 
++ saref  =  1.000e-6  
++ sbref  =  1.000e-6  
++ sta2o = 0.000 
++ stbetl  =  -50e-3  
++ stbetlw  =  -25e-3   
++ stbeto = 1.8 
++ stbetw  = -25.00e-3  
++ stbgidlo = 0.000 
++ stcso = 2.000 
++ stetao = 0.000 
++ stigo = 2.000 
++ stmueo = 1.40 
++ strso  =  -600.0e-3  
++ stthemuo  =  59.28e-3  
++ stthesatl  =  -150.0e-3  
++ stthesatlw  =  -25e-3   
++ stthesato = 3 
++ stthesatw  =  25.0e-3  
++ stvfbl  = -30.00e-3  
++ stvfblw  = -10.00e-3  
++ stvfbo  =  900.0e-6  
++ stvfbw  =  100.00e-3  
++ stxcoro = 3.000 
++ themuo = 1.025 
++ thesatbo  =  250.0e-3  
++ thesatgo  =  50.00e-3  
++ thesatlexp = 1.000 
++ thesatlw  = -10.00e-3  
++ thesato  =  20.00e-18  
++ thesatw  = -75.00e-3  
++ tkuo = 0.000 
++ vfbw  = -10.00e-3  
++ vnsubo = 0.000 
++ vpo  =  50.00e-3  
++ wbet  =  1.000e-9  
++ wkuo = 0.000 
++ wkvtho = 0.000 
++ wlod = 0.000 
++ wlodkuo = 0.000 
++ wlodvth = 0.000 
++ wseg  =  25.00e-9  
++ wsegp  =  10.00e-9  
++ wvarl = 0
++ wvaro = 0.000 
++ wvarw = 0
++ xcorl = 1.000 
++ xcorlw = 0.000 
++ xcoro  =  111.0e-18  
++ xcorw  = -500.0e-3  
+***************************************************************************
+* Junction Diode Parameters
+***************************************************************************
++ trj  = 25.00 
++ imax  = 1000 
+***************************************************************************
+*    Capacitance Parameters
+***************************************************************************
++ cjorbot  =  1e-12  
++ cjorgat  = cjsg_p50  
++ cjorsti  =  1e-18  
++ vbirgat  = pbsg_p50
++ pbot  =  310.3e-3  
++ pgat  = mjsg_p50
++ psti = 0.5
+***************************************************************************
+*    Ideal Current Parameters
+***************************************************************************
++ phigbot = 1.160 
++ phiggat = 1.160 
++ phigsti = 1.160 
++ xjungat  =  100.0e-9  
++ xjunsti  =  100.0e-9 
++ idsatrbot  =  50.00e-9  
++ idsatrgat  =  1.000e-18  
++ idsatrsti  =  51.73e-15  
++ csrhbot = 0.000 
++ csrhgat = 0.000 
++ csrhsti = 0.000 
+***************************************************************************
+*    Trap-Assisted Tunneling Parameters
+***************************************************************************
++ ctatbot = 0.000 
++ ctatgat = 0.000 
++ ctatsti = 0.000 
++ mefftatbot  =  250.0e-3  
++ mefftatgat  =  250.0e-3  
++ mefftatsti  =  250.0e-3  
+***************************************************************************
+*    Band-to-Band Tunneling Parameters
+***************************************************************************
++ cbbtbot = 0.000 
++ cbbtgat = 0.000 
++ cbbtsti = 0.000 
++ fbbtrbot = 1.000G
++ fbbtrgat = 1.000G
++ fbbtrsti = 1.000G
++ stfbbtbot  = -1.000e-3  
++ stfbbtgat  = -1.000e-3  
++ stfbbtsti  = -1.000e-3  
+***************************************************************************
+*    Avalanche and Breakdown Parameters
+***************************************************************************
++ vbrbot = 10.00 
++ vbrgat = 10.00 
++ vbrsti = 10.00 
++ pbrbot = 4.000 
++ pbrgat = 4.000 
++ pbrsti = 4.000 
+***************************************************************************
+* Noise Parameters
+***************************************************************************
++ nfalw= (40e+23*noia_mul)
++ nfblw= (20e+08*noib_mul)
++ nfclw= (50e-09*noic_mul)
++ efo=1.2
++ fnto=1
+***************************************************************************
+* Extrinsic Source/Drain Diode Model
+***************************************************************************
+model pdio50  diode
++ level  = 1.000 
++ tnom  = 25.00 
++ xti  = 3.000 
++ tlev  = 0.000 
++ tlevc  = 1.000 
++ eg  = 1.170 
++ gap1  = 473.0u
++ gap2  = 636.0 
++ rs = 500n
++ is  = js_p50
++ isw  = jsw_p50
++ imelt = 10G
++ n  = n_p50
++ cjo  = cj_p50
++ vj  = pb_p50
++ m  = mj_p50
++ cjsw  = cjsw_p50
++ vjsw  = pbsw_p50
++ mjsw  = mjsw_p50
++ imax  = 10.00G
++ ibv  = 10.00u
++ cta  = cta_p50 
++ ctp  = ctp_p50
++ pta  = pta_p50
++ ptp  = ptp_p50
++ bv  = 9.530 
+***************************************************************************
+ends pfet50
